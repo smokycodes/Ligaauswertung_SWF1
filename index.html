@@ -1,0 +1,796 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#1f4e79">
+<title>Bayernliga Erfassung</title>
+<style>
+:root{--blau:#1f4e79;--rand:#c9d3dd;--bg:#f3f6f9;--rot:#c62828;--gelb:#b26a00;--gruen:#2e7d32}
+*{box-sizing:border-box}
+body{margin:0;font:16px/1.4 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:var(--bg);color:#1b2733}
+header{background:var(--blau);color:#fff;padding:10px 12px 0;position:sticky;top:0;z-index:5}
+header h1{font-size:17px;margin:0 0 8px;font-weight:600}
+nav{display:flex;gap:4px}
+nav button{flex:1;border:0;background:transparent;color:#cfe0f0;padding:10px 4px;font-size:15px;border-bottom:3px solid transparent}
+nav button.on{color:#fff;border-bottom-color:#fff;font-weight:600}
+main{padding:12px;max-width:760px;margin:0 auto}
+.card{background:#fff;border:1px solid var(--rand);border-radius:10px;padding:12px;margin-bottom:12px}
+.card h2{font-size:15px;margin:0 0 8px;color:var(--blau)}
+button.b,label.b{display:inline-block;border:0;border-radius:8px;background:var(--blau);color:#fff;padding:11px 14px;font-size:15px;margin:0 6px 6px 0;cursor:pointer}
+button.b.sek,label.b.sek{background:#e6edf4;color:var(--blau)}
+button.b.rot{background:var(--rot)}
+button.b:disabled{opacity:.5}
+textarea,input[type=text],input[type=password],select{width:100%;padding:9px;border:1px solid var(--rand);border-radius:6px;font-size:16px;background:#fff}
+.row{display:flex;gap:8px;margin-bottom:8px;align-items:end}
+.row>div{flex:1}
+.row label{font-size:12px;color:#5a6b7b;display:block}
+.scroll{overflow-x:auto}
+table.grid{border-collapse:collapse;margin:6px 0}
+table.grid th{font-size:11px;color:#5a6b7b;font-weight:600;padding:2px}
+table.grid td{padding:1px}
+table.grid{width:100%}
+input.n{width:25px;padding:8px 0;text-align:center;border:1px solid var(--rand);border-radius:4px;font-size:14px;background:#fff}
+input.n.w{width:34px}
+input.bad{background:#ffe3e3;border-color:var(--rot)}
+input.warn{background:#fff2d6;border-color:var(--gelb)}
+tr.sum td{border-top:2px solid var(--rand)}
+.team{display:flex;gap:6px;align-items:center;margin-top:8px}
+.team input[type=text]{flex:1}
+#vorschau{max-width:100%;border:1px solid var(--rand);border-radius:6px;display:block;margin-bottom:8px}
+.banner{padding:9px 11px;border-radius:8px;margin:8px 0;font-weight:600}
+.banner.ok{background:#e4f4e6;color:var(--gruen)}
+.banner.warn{background:#fff2d6;color:var(--gelb)}
+.banner.err{background:#ffe3e3;color:var(--rot)}
+ul.iss{margin:4px 0 8px;padding-left:18px;font-size:14px}
+ul.iss li.error{color:var(--rot)}ul.iss li.warn{color:var(--gelb)}
+.klein{font-size:13px;color:#5a6b7b}
+.item{display:flex;justify-content:space-between;align-items:center;gap:8px;border-top:1px solid var(--rand);padding:8px 0}
+.item:first-of-type{border-top:0}
+.item small{color:#5a6b7b;display:block}
+#toast{position:fixed;left:50%;bottom:18px;transform:translateX(-50%);background:#1b2733;color:#fff;padding:10px 16px;border-radius:20px;opacity:0;transition:.25s;pointer-events:none;max-width:90%;z-index:9}
+#toast.show{opacity:.95}
+.fehler{color:var(--rot);font-weight:600}
+[hidden]{display:none!important}
+textarea{font:14px/1.3 ui-monospace,monospace;margin-bottom:8px}
+details summary{padding:2px 0}
+</style>
+</head>
+<body>
+<header>
+  <h1>Bayernliga · Erfassung</h1>
+  <nav>
+    <button data-tab="erfassen" class="on">Erfassen</button>
+    <button data-tab="daten">Daten</button>
+    <button data-tab="einstellungen">Einstellungen</button>
+  </nav>
+</header>
+<main>
+
+<section id="tab-erfassen">
+  <div class="card">
+    <h2>1 · Zettel aus Claude übernehmen</h2>
+    <ol class="klein" style="margin:0 0 8px;padding-left:18px">
+      <li>Fotos (bis 7 Zettel eines Spieltags) in Claude hochladen, in ein Projekt mit der Anweisung.</li>
+      <li>Antwort von Claude kopieren (Kopieren-Symbol am Codeblock).</li>
+      <li>Hier einfügen und „Übernehmen“ tippen. Jeder Zettel wird geprüft, dann speicherst du ihn.</li>
+    </ol>
+    <button class="b sek" id="btnPrompt">Anweisung für Claude kopieren</button>
+    <textarea id="paste" rows="5" placeholder="Antwort von Claude hier einfügen …"></textarea>
+    <button class="b" id="btnPasteOk">Übernehmen</button>
+    <button class="b sek" id="btnPasteClip">Aus Zwischenablage</button>
+    <button class="b sek" id="btnManuell">Manuell erfassen</button>
+    <div id="pasteStatus" class="klein"></div>
+  </div>
+
+  <details class="card">
+    <summary style="cursor:pointer;color:var(--blau);font-weight:600">Optional: direkt in der App auslesen (braucht API-Schlüssel mit Guthaben)</summary>
+    <div style="margin-top:8px">
+      <label class="b" for="fileCam">📷 Kamera</label>
+      <label class="b sek" for="fileGal">🖼 Galerie</label>
+      <input type="file" id="fileCam" accept="image/*" capture="environment" hidden>
+      <input type="file" id="fileGal" accept="image/*" hidden>
+      <div class="klein">Zettel flach und ganz im Bild fotografieren. Das Auslesen kostet pro Zettel wenige Cent (Anthropic-API, nicht im Claude-Abo enthalten).</div>
+    </div>
+  </details>
+
+  <div class="card" id="cardFoto" hidden>
+    <h2>Foto prüfen und auslesen</h2>
+    <img id="vorschau" alt="Foto des Zettels">
+    <button class="b sek" id="btnL">↺ drehen</button>
+    <button class="b sek" id="btnR">↻ drehen</button>
+    <button class="b" id="btnLesen">Auslesen</button>
+    <div id="lesenStatus" class="klein"></div>
+  </div>
+
+  <div class="card" id="cardEditor" hidden>
+    <h2>2 · Prüfen, korrigieren, speichern</h2>
+    <div id="queueInfo" class="klein" style="font-weight:600"></div>
+    <div class="row">
+      <div><label for="tag">Spieltag</label><select id="tag"><option value="">– wählen –</option><option>1</option><option>2</option><option>3</option><option>4</option></select></div>
+      <div><label for="mnr">Match Nr.</label><input type="text" id="mnr" inputmode="numeric" data-ref="meta:matchNr" data-flag="meta:matchNr"></div>
+    </div>
+    <label class="b sek" for="fileCheck">🖼 Foto zur Kontrolle zeigen</label>
+    <input type="file" id="fileCheck" accept="image/*" hidden>
+    <img id="checkImg" alt="Kontrollfoto" hidden style="max-width:100%;border:1px solid var(--rand);border-radius:6px;margin:6px 0">
+    <div id="unsure" class="klein" style="color:var(--gelb)"></div>
+    <label class="klein" for="gegner">Gegner</label>
+    <input type="text" id="gegner">
+    <div class="scroll" id="gridWrap"></div>
+    <div id="teamWrap"></div>
+    <div id="banner"></div>
+    <ul class="iss" id="issues"></ul>
+    <button class="b" id="btnSave">Speichern</button>
+    <button class="b sek" id="btnVerwerfen">Verwerfen</button>
+  </div>
+</section>
+
+<section id="tab-daten" hidden>
+  <div class="card">
+    <h2>Gespeicherte Matches</h2>
+    <div id="liste" class="klein">Noch nichts gespeichert.</div>
+  </div>
+  <div class="card">
+    <h2>Export / Import</h2>
+    <button class="b" id="btnExport">XML exportieren</button>
+    <label class="b sek" for="fileXml">XML importieren</label>
+    <input type="file" id="fileXml" accept=".xml,text/xml,application/xml" hidden>
+    <div class="klein">Die XML-Datei liest du in Excel mit dem Makro „XML_Importieren“ ein. Sie ist zugleich dein Backup.</div>
+  </div>
+</section>
+
+<section id="tab-einstellungen" hidden>
+  <div class="card">
+    <h2>Auslesen</h2>
+    <label class="klein" for="apiKey">Anthropic-API-Schlüssel (bleibt nur auf diesem Handy)</label>
+    <input type="password" id="apiKey" autocomplete="off">
+    <label class="klein" for="model" style="margin-top:8px;display:block">Modell</label>
+    <select id="model"><option>claude-sonnet-5-5</option><option>claude-opus-5-5</option><option>claude-haiku-5-5</option></select>
+  </div>
+  <div class="card">
+    <h2>Liga</h2>
+    <label class="klein" for="club">Eigener Verein (wie auf dem Zettel)</label>
+    <input type="text" id="club">
+    <label class="klein" for="saison" style="margin-top:8px;display:block">Saison</label>
+    <input type="text" id="saison">
+    <label style="display:block;margin-top:10px"><input type="checkbox" id="autoBackup"> Nach jedem Speichern die XML-Datei als Backup herunterladen</label>
+  </div>
+  <div class="card">
+    <h2>Daten</h2>
+    <button class="b rot" id="btnAlleLoeschen">Alle gespeicherten Matches löschen</button>
+  </div>
+</section>
+
+</main>
+<div id="toast"></div>
+
+<script>
+/* Kernlogik: Auslesen normalisieren, Zettel prüfen, XML ex-/importieren.
+   Läuft im Browser und unter Node (Tests). */
+(function (root) {
+  'use strict';
+  const Core = {};
+  const NS = 5;
+
+  const SHAPE = '{"match_nr":7,"header_team":"...","teams":[{"name":"...","set_totals":[55,55,57,0,0],"set_points":6,"match_points":2},{"name":"...","set_totals":[54,48,56,0,0],"set_points":0,"match_points":0}],' +
+    ' "shooters":[{"nr":6,"sets":[[9,9],[9,9],[10,10],[null,null],[null,null]],"row_sum":56}],"table_set_sums":[55,55,57,null,null]';
+  const RULES = [
+    'Rules:',
+    '- shooters: one entry per row of the large table (column "Schütze" = start number), at most 3, in the order printed top to bottom as seen after mentally rotating the sheet upright. Each set ("1. Satz" ... "5. Satz") has two arrows "Pf. 1" and "Pf. 2". Empty cell -> null. A printed 0 is a miss and must be returned as 0. "M" -> 0, "X" -> 10.',
+    '- row_sum: the number printed to the right of a shooter row, outside the table; null if absent.',
+    '- table_set_sums: the five boxes labelled "Summe" below the table, one per set; null if empty.',
+    '- teams: the two rows of boxes at the top right ("1.S.Pkte" ... "5.S.Pkte", "Summe S.Pkte", "Matchpkte"), in printed order top row first, with the team name printed to the left of each row. set_totals = the five boxes 1.S.Pkte..5.S.Pkte (printed 0 stays 0), set_points = "Summe S.Pkte", match_points = "Matchpkte" (null if cut off or unreadable).',
+    '- header_team: the team name printed at the very top of the sheet (page header). match_nr: the number in front of ". Match".',
+    '- Transcribe exactly what is printed. Do NOT calculate, correct or fill in anything, even if sums look wrong.'
+  ];
+  const INTRO = 'The photo may be rotated (90 or 180 degrees), tilted, blurry, or show faint show-through digits from the reverse side in empty cells. Ignore faint ghost digits; only read clearly printed digits.';
+
+  Core.PROMPT = [
+    'You are reading a photo of a German archery league score sheet ("Ergebniszettel", recurve team match).',
+    INTRO,
+    'Return ONLY one JSON object (no prose, no code fence) with exactly this shape:',
+    SHAPE + '}'
+  ].concat(RULES).join('\n');
+
+  Core.PROMPT_CHAT = [
+    'You read photos of German archery league score sheets ("Ergebniszettel", recurve team matches). I send 1 to 7 photos in one message, one sheet per photo.',
+    INTRO,
+    'Answer with exactly ONE code block that contains a JSON array with one object per photo, in the order of the photos. Write nothing outside the code block. Each object has exactly this shape:',
+    SHAPE + ',"photo":1,"unsure":[]}'
+  ].concat(RULES).concat([
+    '- photo: 1-based position of the photo in my message.',
+    '- unsure: short notes (strings) for every digit you are not sure about, e.g. "Startnr 4, Satz 2, Pf. 1: 8 or 9?". Empty list if you are sure about everything. Still give your best reading in the data.'
+  ]).join('\n');
+
+  /* Alle gültigen JSON-Werte aus beliebigem Text holen (Fließtext, Codeblöcke, Arrays, einzelne Objekte) */
+  Core.extractValues = function (text) {
+    const t = String(text || ''), out = [];
+    let i = 0;
+    while (i < t.length) {
+      const ch = t[i];
+      if (ch === '{' || ch === '[') {
+        let depth = 0, inStr = false, esc = false, j = i;
+        for (; j < t.length; j++) {
+          const c2 = t[j];
+          if (inStr) { if (esc) esc = false; else if (c2 === '\\') esc = true; else if (c2 === '"') inStr = false; continue; }
+          if (c2 === '"') inStr = true;
+          else if (c2 === '{' || c2 === '[') depth++;
+          else if (c2 === '}' || c2 === ']') { depth--; if (depth === 0) break; }
+        }
+        if (depth === 0 && j < t.length) {
+          try { out.push(JSON.parse(t.slice(i, j + 1))); i = j + 1; continue; } catch (e) { /* weiter */ }
+        }
+      }
+      i++;
+    }
+    return out;
+  };
+  Core.extractMatches = function (text) {
+    const res = [];
+    const add = v => {
+      if (Array.isArray(v)) v.forEach(add);
+      else if (v && typeof v === 'object') {
+        if (Array.isArray(v.matches)) add(v.matches);
+        else if (v.shooters || v.teams) res.push(v);
+      }
+    };
+    Core.extractValues(text).forEach(add);
+    return res;
+  };
+
+  const toInt = Core.toInt = function (v) {
+    if (v === null || v === undefined || v === '') return null;
+    if (typeof v === 'number') return Number.isFinite(v) ? Math.round(v) : null;
+    const s = String(v).trim().toUpperCase();
+    if (s === 'M') return 0;
+    if (s === 'X') return 10;
+    return /^-?\d+$/.test(s) ? parseInt(s, 10) : null;
+  };
+
+  Core.parseModelJson = function (text) {
+    const t = String(text || '');
+    const a = t.indexOf('{'), b = t.lastIndexOf('}');
+    if (a < 0 || b < a) throw new Error('Keine JSON-Antwort erhalten');
+    return JSON.parse(t.slice(a, b + 1));
+  };
+
+  const blankTeam = () => ({ name: '', setTotals: new Array(NS).fill(null), setPoints: null, matchPoints: null });
+  const blankShooter = () => ({ nr: null, sets: Array.from({ length: NS }, () => [null, null]), rowSum: null });
+  Core.emptyMatch = function () {
+    return { matchNr: null, gegner: '', headerTeam: '', ownIdx: 0,
+      teams: [blankTeam(), blankTeam()], shooters: [blankShooter(), blankShooter(), blankShooter()],
+      tableSetSums: new Array(NS).fill(null) };
+  };
+
+  const nz = s => String(s || '').toLowerCase().replace(/[^a-z0-9äöüß]/g, '');
+
+  Core.findOwn = function (m, club) {
+    const keys = [m.headerTeam, club].map(nz).filter(Boolean);
+    for (const k of keys) {
+      for (let i = 0; i < 2; i++) {
+        const n = nz(m.teams[i].name);
+        if (n && (n === k || n.includes(k) || k.includes(n))) return i;
+      }
+    }
+    for (let i = 0; i < 2; i++) {
+      let ok = 0, cnt = 0;
+      for (let s = 0; s < NS; s++) {
+        const p = m.tableSetSums[s];
+        if (p != null && p > 0) { cnt++; if (m.teams[i].setTotals[s] === p) ok++; }
+      }
+      if (cnt && ok === cnt) return i;
+    }
+    return 0;
+  };
+
+  Core.normalize = function (raw, club) {
+    const m = Core.emptyMatch();
+    m.matchNr = toInt(raw.match_nr);
+    m.headerTeam = raw.header_team || '';
+    (raw.teams || []).slice(0, 2).forEach((t, i) => {
+      const T = m.teams[i];
+      T.name = t.name || '';
+      for (let s = 0; s < NS; s++) T.setTotals[s] = toInt((t.set_totals || [])[s]);
+      T.setPoints = toInt(t.set_points);
+      T.matchPoints = toInt(t.match_points);
+    });
+    (raw.shooters || []).slice(0, 3).forEach((sh, i) => {
+      const S = m.shooters[i];
+      S.nr = toInt(sh.nr);
+      S.rowSum = toInt(sh.row_sum);
+      for (let s = 0; s < NS; s++) {
+        const p = (sh.sets || [])[s] || [];
+        S.sets[s] = [toInt(p[0]), toInt(p[1])];
+      }
+    });
+    for (let s = 0; s < NS; s++) m.tableSetSums[s] = toInt((raw.table_set_sums || [])[s]);
+    m.ownIdx = Core.findOwn(m, club);
+    m.gegner = m.teams[1 - m.ownIdx].name;
+    m.unsure = Array.isArray(raw.unsure) ? raw.unsure.map(String).slice(0, 20) : [];
+    return m;
+  };
+
+  /* Anzahl vollständig geschossener Sätze (zusammenhängend ab Satz 1) */
+  Core.shotSets = function (m) {
+    let k = 0;
+    for (let s = 0; s < NS; s++) {
+      if (m.shooters.every(S => S.sets[s][0] != null && S.sets[s][1] != null)) k++; else break;
+    }
+    return k;
+  };
+
+  /* Prüft einen Zettel. Liefert Liste von {level, msg, refs}. refs: arr:r:s | row:r | tsum:s | tt:i:s | sp:i | mp:i | nr:r | meta:matchNr */
+  Core.validate = function (m) {
+    const issues = [];
+    const add = (level, msg, refs) => issues.push({ level, msg, refs: refs || [] });
+    const k = Core.shotSets(m);
+
+    if (m.matchNr == null || m.matchNr < 1 || m.matchNr > 7) add('error', 'Matchnummer fehlt oder liegt nicht zwischen 1 und 7', ['meta:matchNr']);
+    const nrs = m.shooters.map(S => S.nr);
+    m.shooters.forEach((S, r) => {
+      if (S.nr == null || S.nr < 1 || S.nr > 99) add('error', `Startnummer von Zeile ${r + 1} fehlt oder ist ungültig`, ['nr:' + r]);
+    });
+    const known = nrs.filter(x => x != null);
+    if (new Set(known).size !== known.length) add('error', 'Eine Startnummer kommt doppelt vor', nrs.map((x, r) => 'nr:' + r));
+
+    m.shooters.forEach((S, r) => {
+      for (let s = 0; s < NS; s++) {
+        const [a, b] = S.sets[s];
+        [a, b].forEach(v => { if (v != null && (v < 0 || v > 10)) add('error', `Pfeilwert ${v} außerhalb 0–10 (Startnr. ${S.nr}, Satz ${s + 1})`, ['arr:' + r + ':' + s]); });
+        if ((a == null) !== (b == null)) add('error', `Satz ${s + 1}, Startnr. ${S.nr}: nur ein Pfeil gelesen`, ['arr:' + r + ':' + s]);
+      }
+    });
+    if (k < 3) add('error', 'Weniger als 3 vollständige Sätze gelesen', []);
+    for (let s = k; s < NS; s++) {
+      m.shooters.forEach((S, r) => {
+        if (S.sets[s][0] != null || S.sets[s][1] != null) add('error', `Satz ${s + 1} ist nicht bei allen Schützen vollständig`, ['arr:' + r + ':' + s]);
+      });
+    }
+
+    const calcSet = s => m.shooters.reduce((t, S) => t + S.sets[s][0] + S.sets[s][1], 0);
+    const calcRow = S => { let t = 0; for (let s = 0; s < k; s++) t += S.sets[s][0] + S.sets[s][1]; return t; };
+    const colBad = new Set(), rowBad = new Set();
+
+    for (let s = 0; s < k; s++) {
+      const p = m.tableSetSums[s];
+      if (p == null) add('warn', `Satzsumme ${s + 1} auf dem Zettel nicht gelesen`, ['tsum:' + s]);
+      else if (p !== calcSet(s)) { colBad.add(s); add('error', `Satz ${s + 1}: Pfeile ergeben ${calcSet(s)}, Zettel nennt ${p}`, ['tsum:' + s]); }
+    }
+    m.shooters.forEach((S, r) => {
+      if (S.rowSum == null || k === 0) return;
+      const c = calcRow(S);
+      if (S.rowSum !== c) { rowBad.add(r); add('error', `Startnr. ${S.nr}: Pfeile ergeben ${c}, Zettel nennt ${S.rowSum}`, ['row:' + r]); }
+    });
+    if (colBad.size || rowBad.size) {
+      const refs = [];
+      if (colBad.size && rowBad.size) rowBad.forEach(r => colBad.forEach(s => refs.push('arr:' + r + ':' + s)));
+      else if (colBad.size) colBad.forEach(s => m.shooters.forEach((S, r) => refs.push('arr:' + r + ':' + s)));
+      else rowBad.forEach(r => { for (let s = 0; s < k; s++) refs.push('arr:' + r + ':' + s); });
+      add('warn', 'Verdächtige Pfeile sind markiert – bitte mit dem Foto vergleichen', refs);
+    }
+
+    const own = m.teams[m.ownIdx], opp = m.teams[1 - m.ownIdx];
+    const oi = m.ownIdx, pi = 1 - m.ownIdx;
+    for (let s = 0; s < k; s++) {
+      const t = own.setTotals[s], p = m.tableSetSums[s];
+      if (t == null) add('warn', `Teamsumme Satz ${s + 1} (oben) nicht gelesen`, ['tt:' + oi + ':' + s]);
+      else if (p != null && t !== p) add('error', `Satz ${s + 1}: Teamsumme oben (${t}) ≠ Summe unter der Tabelle (${p})`, ['tt:' + oi + ':' + s, 'tsum:' + s]);
+    }
+    for (let s = k; s < NS; s++) {
+      [[own, oi], [opp, pi]].forEach(([T, i]) => {
+        if (T.setTotals[s] != null && T.setTotals[s] !== 0) add('warn', `Teamsumme Satz ${s + 1} ist ${T.setTotals[s]}, obwohl der Satz nicht geschossen wurde`, ['tt:' + i + ':' + s]);
+      });
+    }
+
+    const P = [0, 0]; let ok = k > 0;
+    for (let s = 0; s < k && ok; s++) {
+      const x = own.setTotals[s], y = opp.setTotals[s];
+      if (x == null || y == null) { ok = false; break; }
+      if (x > y) P[0] += 2; else if (x < y) P[1] += 2; else { P[0]++; P[1]++; }
+    }
+    if (!ok) add('warn', 'Satzpunkte konnten nicht geprüft werden (Teamsummen fehlen)', []);
+    else {
+      if (own.setPoints == null) add('warn', 'Satzpunkte (eigene) nicht gelesen', ['sp:' + oi]);
+      else if (own.setPoints !== P[0]) add('error', `Satzpunkte: aus den Teamsummen ${P[0]}, Zettel nennt ${own.setPoints} (eigenes Team)`, ['sp:' + oi]);
+      if (opp.setPoints == null) add('warn', 'Satzpunkte (Gegner) nicht gelesen', ['sp:' + pi]);
+      else if (opp.setPoints !== P[1]) add('error', `Satzpunkte: aus den Teamsummen ${P[1]}, Zettel nennt ${opp.setPoints} (Gegner)`, ['sp:' + pi]);
+      const exp = P[0] > P[1] ? [2, 0] : P[0] < P[1] ? [0, 2] : [1, 1];
+      if (own.matchPoints == null) add('warn', 'Matchpunkte (eigene) nicht gelesen', ['mp:' + oi]);
+      else if (own.matchPoints !== exp[0]) add('error', `Matchpunkte: erwartet ${exp[0]}, Zettel nennt ${own.matchPoints} (eigenes Team)`, ['mp:' + oi]);
+      if (opp.matchPoints == null) add('warn', 'Matchpunkte (Gegner) nicht gelesen', ['mp:' + pi]);
+      else if (opp.matchPoints !== exp[1]) add('error', `Matchpunkte: erwartet ${exp[1]}, Zettel nennt ${opp.matchPoints} (Gegner)`, ['mp:' + pi]);
+    }
+    return issues;
+  };
+
+  Core.summary = function (rec) {
+    const k = Core.shotSets(rec);
+    let ringe = 0;
+    rec.shooters.forEach(S => { for (let s = 0; s < k; s++) ringe += S.sets[s][0] + S.sets[s][1]; });
+    const pfeile = k * 6;
+    const own = rec.teams[rec.ownIdx], opp = rec.teams[1 - rec.ownIdx];
+    return { sets: k, ringe, pfeile, snitt: pfeile ? ringe / pfeile : 0,
+      satzpunkte: [own.setPoints, opp.setPoints], matchpunkte: [own.matchPoints, opp.matchPoints] };
+  };
+
+  /* ---------- XML ---------- */
+  const esc = s => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  const at = (n, v) => (v == null ? '' : ` ${n}="${esc(v)}"`);
+
+  Core.toXml = function (records, meta) {
+    meta = meta || {};
+    const L = ['<?xml version="1.0" encoding="UTF-8"?>'];
+    L.push(`<Bayernliga saison="${esc(meta.saison || '')}" verein="${esc(meta.verein || '')}" exportiert="${esc(meta.exportiert || new Date().toISOString())}">`);
+    const tags = [...new Set(records.map(r => r.tag))].sort((a, b) => a - b);
+    for (const t of tags) {
+      L.push(`  <Spieltag nr="${t}">`);
+      records.filter(r => r.tag === t).sort((a, b) => a.matchNr - b.matchNr).forEach(r => {
+        const own = r.teams[r.ownIdx], opp = r.teams[1 - r.ownIdx], k = Core.shotSets(r);
+        L.push(`    <Match nr="${r.matchNr}" gegner="${esc(r.gegner)}">`);
+        L.push(`      <Ergebnis${at('satzpunkte', own.setPoints)}${at('gegnerSatzpunkte', opp.setPoints)}${at('matchpunkte', own.matchPoints)}${at('gegnerMatchpunkte', opp.matchPoints)}/>`);
+        r.shooters.forEach(S => {
+          L.push(`      <Schuetze startnummer="${S.nr}">`);
+          for (let s = 0; s < k; s++) L.push(`        <Satz nr="${s + 1}" pfeil1="${S.sets[s][0]}" pfeil2="${S.sets[s][1]}"/>`);
+          L.push('      </Schuetze>');
+        });
+        L.push('      <Teamsaetze>');
+        for (let s = 0; s < k; s++) L.push(`        <Teamsatz nr="${s + 1}"${at('eigen', own.setTotals[s])}${at('gegner', opp.setTotals[s])}/>`);
+        L.push('      </Teamsaetze>');
+        L.push('    </Match>');
+      });
+      L.push('  </Spieltag>');
+    }
+    L.push('</Bayernliga>');
+    return L.join('\n') + '\n';
+  };
+
+  /* doc: ein DOM-Document (DOMParser) */
+  Core.fromXmlDoc = function (doc) {
+    const root = doc.documentElement;
+    if (!root || root.nodeName !== 'Bayernliga') throw new Error('Das ist keine Bayernliga-XML-Datei');
+    const verein = root.getAttribute('verein') || '';
+    const num = (el, a) => { const v = el.getAttribute(a); return v == null || v === '' ? null : parseInt(v, 10); };
+    const out = [];
+    Array.from(root.getElementsByTagName('Spieltag')).forEach(sp => {
+      const tag = num(sp, 'nr');
+      Array.from(sp.getElementsByTagName('Match')).forEach(mx => {
+        const m = Core.emptyMatch();
+        m.tag = tag; m.matchNr = num(mx, 'nr'); m.gegner = mx.getAttribute('gegner') || '';
+        m.headerTeam = verein; m.ownIdx = 0;
+        m.teams[0].name = verein; m.teams[1].name = m.gegner;
+        const er = mx.getElementsByTagName('Ergebnis')[0];
+        if (er) {
+          m.teams[0].setPoints = num(er, 'satzpunkte'); m.teams[1].setPoints = num(er, 'gegnerSatzpunkte');
+          m.teams[0].matchPoints = num(er, 'matchpunkte'); m.teams[1].matchPoints = num(er, 'gegnerMatchpunkte');
+        }
+        Array.from(mx.getElementsByTagName('Schuetze')).slice(0, 3).forEach((sx, i) => {
+          m.shooters[i].nr = num(sx, 'startnummer');
+          Array.from(sx.getElementsByTagName('Satz')).forEach(st => {
+            const n = num(st, 'nr') - 1;
+            if (n >= 0 && n < NS) m.shooters[i].sets[n] = [num(st, 'pfeil1'), num(st, 'pfeil2')];
+          });
+        });
+        Array.from(mx.getElementsByTagName('Teamsatz')).forEach(ts => {
+          const n = num(ts, 'nr') - 1;
+          if (n >= 0 && n < NS) { m.teams[0].setTotals[n] = num(ts, 'eigen'); m.teams[1].setTotals[n] = num(ts, 'gegner'); m.tableSetSums[n] = num(ts, 'eigen'); }
+        });
+        out.push(m);
+      });
+    });
+    return out;
+  };
+
+  if (typeof module !== 'undefined' && module.exports) module.exports = Core; else root.Core = Core;
+})(typeof window !== 'undefined' ? window : globalThis);
+
+</script>
+<script>
+'use strict';
+const $ = s => document.querySelector(s);
+const h = s => String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+const LS = {
+  get(k, d) { try { const v = localStorage.getItem(k); return v == null ? d : v; } catch (e) { return d; } },
+  set(k, v) { try { localStorage.setItem(k, v); } catch (e) {} }
+};
+function toast(t) { const el = $('#toast'); el.textContent = t; el.classList.add('show'); clearTimeout(toast.t); toast.t = setTimeout(() => el.classList.remove('show'), 2600); }
+
+/* ---------- Datenbank (IndexedDB) ---------- */
+function openDb() {
+  return new Promise((res, rej) => {
+    const r = indexedDB.open('bogenliga', 1);
+    r.onupgradeneeded = () => r.result.createObjectStore('matches', { keyPath: 'key' });
+    r.onsuccess = () => res(r.result);
+    r.onerror = () => rej(r.error);
+  });
+}
+async function tx(mode, fn) {
+  const d = await openDb();
+  return new Promise((res, rej) => {
+    const t = d.transaction('matches', mode);
+    const q = fn(t.objectStore('matches'));
+    t.oncomplete = () => res(q && q.result);
+    t.onerror = () => rej(t.error);
+  });
+}
+const dbAll = () => tx('readonly', s => s.getAll());
+const dbGet = k => tx('readonly', s => s.get(k));
+const dbPut = r => tx('readwrite', s => s.put(r));
+const dbDel = k => tx('readwrite', s => s.delete(k));
+const dbClear = () => tx('readwrite', s => s.clear());
+
+/* ---------- Einstellungen ---------- */
+function loadSettings() {
+  $('#apiKey').value = LS.get('apiKey', '');
+  $('#model').value = LS.get('model', 'claude-sonnet-5-5');
+  $('#club').value = LS.get('club', 'SG Schwarzenfeld');
+  $('#saison').value = LS.get('saison', '2025/2026');
+  $('#autoBackup').checked = LS.get('autoBackup', '1') === '1';
+}
+['apiKey', 'model', 'club', 'saison'].forEach(id => $('#' + id).addEventListener('change', e => LS.set(id, e.target.value.trim())));
+$('#autoBackup').addEventListener('change', e => LS.set('autoBackup', e.target.checked ? '1' : '0'));
+const club = () => LS.get('club', 'SG Schwarzenfeld');
+
+/* ---------- Tabs ---------- */
+document.querySelectorAll('nav button').forEach(b => b.addEventListener('click', () => {
+  document.querySelectorAll('nav button').forEach(x => x.classList.toggle('on', x === b));
+  ['erfassen', 'daten', 'einstellungen'].forEach(t => { $('#tab-' + t).hidden = (t !== b.dataset.tab); });
+  if (b.dataset.tab === 'daten') refreshList();
+}));
+
+/* ---------- Foto ---------- */
+let imgEl = null, rot = 0;
+function renderCanvas(maxSide) {
+  const w = imgEl.naturalWidth, hh = imgEl.naturalHeight, swap = rot % 180 !== 0;
+  const cw = swap ? hh : w, ch = swap ? w : hh;
+  const sc = Math.min(1, maxSide / Math.max(cw, ch));
+  const c = document.createElement('canvas');
+  c.width = Math.round(cw * sc); c.height = Math.round(ch * sc);
+  const g = c.getContext('2d');
+  g.fillStyle = '#fff'; g.fillRect(0, 0, c.width, c.height);
+  g.translate(c.width / 2, c.height / 2); g.rotate(rot * Math.PI / 180);
+  g.drawImage(imgEl, -w * sc / 2, -hh * sc / 2, w * sc, hh * sc);
+  return c;
+}
+function showPreview() { $('#vorschau').src = renderCanvas(1000).toDataURL('image/jpeg', 0.8); }
+async function loadFile(file) {
+  if (!file) return;
+  const url = URL.createObjectURL(file);
+  const im = new Image(); im.src = url;
+  try { await im.decode(); } catch (e) { toast('Bild konnte nicht geladen werden'); return; }
+  imgEl = im; rot = 0;
+  $('#cardFoto').hidden = false; $('#cardEditor').hidden = true; $('#lesenStatus').textContent = '';
+  showPreview();
+  $('#cardFoto').scrollIntoView({ behavior: 'smooth' });
+}
+['fileCam', 'fileGal'].forEach(id => $('#' + id).addEventListener('change', e => { loadFile(e.target.files[0]); e.target.value = ''; }));
+$('#btnL').onclick = () => { rot = (rot + 270) % 360; showPreview(); };
+$('#btnR').onclick = () => { rot = (rot + 90) % 360; showPreview(); };
+
+async function readSheet(canvas) {
+  const key = LS.get('apiKey', '');
+  if (!key) throw new Error('Bitte zuerst den API-Schlüssel unter „Einstellungen“ eintragen.');
+  const b64 = canvas.toDataURL('image/jpeg', 0.85).split(',')[1];
+  const resp = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: { 'x-api-key': key, 'anthropic-version': '2023-06-01', 'content-type': 'application/json', 'anthropic-dangerous-direct-browser-access': 'true' },
+    body: JSON.stringify({
+      model: LS.get('model', 'claude-sonnet-5-5'), max_tokens: 2000,
+      messages: [{ role: 'user', content: [
+        { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: b64 } },
+        { type: 'text', text: Core.PROMPT }] }]
+    })
+  });
+  let j; try { j = await resp.json(); } catch (e) { throw new Error('Unerwartete Antwort (HTTP ' + resp.status + ')'); }
+  if (!resp.ok) throw new Error((j.error && j.error.message) || ('HTTP ' + resp.status));
+  const text = (j.content || []).filter(c => c.type === 'text').map(c => c.text).join('');
+  return { raw: Core.parseModelJson(text), usage: j.usage };
+}
+
+$('#btnLesen').onclick = async () => {
+  const btn = $('#btnLesen'), st = $('#lesenStatus');
+  btn.disabled = true; st.className = 'klein'; st.textContent = 'Lese Zettel aus … (ca. 10–20 Sekunden)';
+  try {
+    const { raw, usage } = await readSheet(renderCanvas(1800));
+    draft = Core.normalize(raw, club()); editingKey = null; queue = null; qi = 0;
+    st.textContent = usage ? `Fertig. Verbrauch: ${usage.input_tokens} Eingabe-, ${usage.output_tokens} Ausgabe-Tokens.` : 'Fertig.';
+    openEditor();
+  } catch (e) { st.className = 'fehler'; st.textContent = 'Auslesen fehlgeschlagen: ' + e.message; }
+  finally { btn.disabled = false; }
+};
+$('#btnManuell').onclick = () => {
+  draft = Core.emptyMatch(); draft.teams[0].name = club(); draft.headerTeam = club(); editingKey = null; queue = null; qi = 0; openEditor();
+};
+
+/* ---------- Editor ---------- */
+let draft = null, editingKey = null, queue = null, qi = 0;
+const num = (ref, flag, v, cls) => `<input class="n ${cls || ''}" inputmode="numeric" data-ref="${ref}" data-flag="${flag}" value="${v == null ? '' : v}">`;
+
+function openEditor() {
+  $('#cardEditor').hidden = false;
+  $('#queueInfo').textContent = queue && queue.length > 1 ? `Zettel ${qi + 1} von ${queue.length}` : '';
+  $('#btnVerwerfen').textContent = queue && queue.length > 1 ? 'Überspringen' : 'Verwerfen';
+  $('#unsure').innerHTML = draft.unsure && draft.unsure.length ? 'Claude war unsicher bei:<br>• ' + draft.unsure.map(h).join('<br>• ') : '';
+  $('#checkImg').hidden = true; $('#checkImg').removeAttribute('src');
+  $('#tag').value = draft.tag ? String(draft.tag) : LS.get('lastTag', '');
+  $('#mnr').value = draft.matchNr == null ? '' : draft.matchNr;
+  $('#gegner').value = draft.gegner || '';
+  let g = '<table class="grid"><thead><tr><th>Nr</th>';
+  for (let s = 0; s < 5; s++) g += `<th colspan="2">Satz ${s + 1}</th>`;
+  g += '<th>Σ Zettel</th></tr></thead><tbody>';
+  draft.shooters.forEach((S, r) => {
+    g += `<tr><td>${num('nr:' + r, 'nr:' + r, S.nr)}</td>`;
+    for (let s = 0; s < 5; s++) for (let a = 0; a < 2; a++) g += `<td>${num('arr:' + r + ':' + s + ':' + a, 'arr:' + r + ':' + s, S.sets[s][a])}</td>`;
+    g += `<td>${num('row:' + r, 'row:' + r, S.rowSum, 'w')}</td></tr>`;
+  });
+  g += '<tr class="sum"><td>Σ</td>';
+  for (let s = 0; s < 5; s++) g += `<td colspan="2" style="text-align:center">${num('tsum:' + s, 'tsum:' + s, draft.tableSetSums[s], 'w')}</td>`;
+  g += '<td></td></tr></tbody></table>';
+  $('#gridWrap').innerHTML = g;
+
+  let t = '';
+  [0, 1].forEach(i => {
+    const T = draft.teams[i];
+    t += `<div class="team"><label><input type="radio" name="own" value="${i}" ${draft.ownIdx === i ? 'checked' : ''}> wir</label><input type="text" data-ref="tname:${i}" value="${h(T.name)}"></div>`;
+    t += '<div class="scroll"><table class="grid"><thead><tr>';
+    for (let s = 0; s < 5; s++) t += `<th>Satz ${s + 1}</th>`;
+    t += '<th>Satzpkt</th><th>Matchpkt</th></tr></thead><tbody><tr>';
+    for (let s = 0; s < 5; s++) t += `<td>${num('tt:' + i + ':' + s, 'tt:' + i + ':' + s, T.setTotals[s], 'w')}</td>`;
+    t += `<td>${num('sp:' + i, 'sp:' + i, T.setPoints, 'w')}</td><td>${num('mp:' + i, 'mp:' + i, T.matchPoints, 'w')}</td></tr></tbody></table></div>`;
+  });
+  $('#teamWrap').innerHTML = t;
+  revalidate();
+  $('#cardEditor').scrollIntoView({ behavior: 'smooth' });
+}
+
+function bind(el) {
+  const ref = el.dataset.ref; if (!ref) return;
+  const [t, a, b, c] = ref.split(':');
+  const txt = el.value.trim();
+  const v = txt === '' ? null : Core.toInt(txt);
+  switch (t) {
+    case 'arr': draft.shooters[+a].sets[+b][+c] = v; break;
+    case 'nr': draft.shooters[+a].nr = v; break;
+    case 'row': draft.shooters[+a].rowSum = v; break;
+    case 'tsum': draft.tableSetSums[+a] = v; break;
+    case 'tt': draft.teams[+a].setTotals[+b] = v; break;
+    case 'sp': draft.teams[+a].setPoints = v; break;
+    case 'mp': draft.teams[+a].matchPoints = v; break;
+    case 'tname': draft.teams[+a].name = el.value; break;
+    case 'meta': draft.matchNr = v; break;
+  }
+}
+function revalidate() {
+  const issues = Core.validate(draft);
+  const bad = new Set(), warn = new Set();
+  issues.forEach(i => i.refs.forEach(r => (i.level === 'error' ? bad : warn).add(r)));
+  document.querySelectorAll('#cardEditor [data-flag]').forEach(el => {
+    el.classList.toggle('bad', bad.has(el.dataset.flag));
+    el.classList.toggle('warn', !bad.has(el.dataset.flag) && warn.has(el.dataset.flag));
+  });
+  const ne = issues.filter(i => i.level === 'error').length, nw = issues.length - ne;
+  $('#banner').innerHTML = ne ? `<div class="banner err">${ne} Prüffehler – bitte mit dem Foto vergleichen</div>`
+    : nw ? `<div class="banner warn">Keine Fehler, ${nw} Hinweis${nw > 1 ? 'e' : ''}</div>`
+    : '<div class="banner ok">✔ Alle Prüfsummen stimmen</div>';
+  $('#issues').innerHTML = issues.filter(i => i.msg !== undefined).map(i => `<li class="${i.level}">${h(i.msg)}</li>`).join('');
+  return issues;
+}
+$('#cardEditor').addEventListener('input', e => {
+  const el = e.target;
+  if (el.name === 'own') return;
+  if (el.id === 'gegner') { draft.gegner = el.value; return; }
+  bind(el); if (el.dataset.ref && el.dataset.ref.startsWith('tname')) return; revalidate();
+});
+$('#cardEditor').addEventListener('change', e => {
+  if (e.target.name === 'own') { draft.ownIdx = +e.target.value; draft.gegner = draft.teams[1 - draft.ownIdx].name; $('#gegner').value = draft.gegner; revalidate(); }
+});
+function nextInQueue() {
+  if (queue && qi + 1 < queue.length) { qi++; draft = queue[qi]; editingKey = null; openEditor(); return true; }
+  queue = null; qi = 0; return false;
+}
+$('#btnVerwerfen').onclick = () => { if (!nextInQueue()) { $('#cardEditor').hidden = true; draft = null; } };
+
+$('#btnSave').onclick = async () => {
+  const errs = Core.validate(draft).filter(i => i.level === 'error');
+  const tag = +$('#tag').value;
+  if (!tag) { toast('Bitte den Spieltag wählen'); return; }
+  if (draft.matchNr == null || draft.matchNr < 1 || draft.matchNr > 7) { toast('Bitte die Matchnummer (1–7) eintragen'); return; }
+  if (errs.length && !confirm(`Es gibt noch ${errs.length} Prüffehler. Trotzdem speichern?`)) return;
+  const key = `${tag}-${draft.matchNr}`;
+  const old = await dbGet(key);
+  if (old && key !== editingKey && !confirm(`Spieltag ${tag}, Match ${draft.matchNr} ist schon gespeichert (${old.gegner}). Überschreiben?`)) return;
+  const rec = JSON.parse(JSON.stringify(draft));
+  rec.gegner = $('#gegner').value.trim(); rec.tag = tag; rec.key = key; rec.savedAt = new Date().toISOString();
+  await dbPut(rec);
+  LS.set('lastTag', String(tag));
+  toast(`Gespeichert: Spieltag ${tag}, Match ${rec.matchNr}`);
+  editingKey = null;
+  if (nextInQueue()) return;
+  $('#cardEditor').hidden = true; $('#cardFoto').hidden = true; draft = null;
+  if (LS.get('autoBackup', '1') === '1') await exportXml();
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+};
+
+/* ---------- Einfügen aus Claude ---------- */
+async function copyText(txt) {
+  try { await navigator.clipboard.writeText(txt); return true; } catch (e) { /* Rückfall */ }
+  const ta = document.createElement('textarea'); ta.value = txt; document.body.appendChild(ta); ta.select();
+  let ok = false; try { ok = document.execCommand('copy'); } catch (e) {}
+  ta.remove(); return ok;
+}
+$('#btnPrompt').onclick = async () => { toast((await copyText(Core.PROMPT_CHAT)) ? 'Anweisung kopiert – in Claude einfügen' : 'Kopieren nicht möglich'); };
+function takePasted() {
+  const st = $('#pasteStatus'); st.className = 'klein';
+  const raws = Core.extractMatches($('#paste').value);
+  if (!raws.length) { st.className = 'fehler'; st.textContent = 'In dem Text wurde kein Zettel gefunden. Bitte die komplette Antwort von Claude einfügen (auch der Codeblock).'; return; }
+  queue = raws.map(r => Core.normalize(r, club())); qi = 0; draft = queue[0]; editingKey = null;
+  st.textContent = `${raws.length} Zettel übernommen.`;
+  $('#paste').value = '';
+  openEditor();
+}
+$('#btnPasteOk').onclick = takePasted;
+$('#btnPasteClip').onclick = async () => {
+  try { $('#paste').value = await navigator.clipboard.readText(); takePasted(); }
+  catch (e) { toast('Zugriff auf die Zwischenablage nicht erlaubt – bitte ins Feld einfügen'); }
+};
+$('#fileCheck').addEventListener('change', e => {
+  const f = e.target.files[0]; e.target.value = ''; if (!f) return;
+  const img = $('#checkImg'); img.src = URL.createObjectURL(f); img.hidden = false;
+});
+
+/* ---------- Liste / Export / Import ---------- */
+async function refreshList() {
+  const recs = (await dbAll()).sort((a, b) => a.tag - b.tag || a.matchNr - b.matchNr);
+  if (!recs.length) { $('#liste').textContent = 'Noch nichts gespeichert.'; return; }
+  let html = '', last = null;
+  recs.forEach(r => {
+    if (r.tag !== last) { html += `<div style="font-weight:600;margin-top:8px">Spieltag ${r.tag}</div>`; last = r.tag; }
+    const s = Core.summary(r);
+    const sp = s.satzpunkte.every(x => x != null) ? `${s.satzpunkte[0]}:${s.satzpunkte[1]} Satzpunkte` : '';
+    html += `<div class="item"><div>Match ${r.matchNr} · ${h(r.gegner)}<small>${sp} · ${s.ringe} Ringe · Ø ${s.snitt.toFixed(2)}</small></div>
+      <div><button class="b sek" data-edit="${h(r.key)}">Bearbeiten</button><button class="b rot" data-del="${h(r.key)}">✕</button></div></div>`;
+  });
+  $('#liste').innerHTML = html;
+}
+$('#liste').addEventListener('click', async e => {
+  const ed = e.target.dataset.edit, del = e.target.dataset.del;
+  if (del && confirm('Dieses Match löschen?')) { await dbDel(del); refreshList(); }
+  if (ed) {
+    draft = await dbGet(ed); editingKey = ed; queue = null; qi = 0;
+    document.querySelector('nav button[data-tab=erfassen]').click();
+    $('#cardFoto').hidden = true; openEditor();
+  }
+});
+function download(name, text) {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([text], { type: 'application/xml' }));
+  a.download = name; document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+}
+async function exportXml() {
+  const recs = await dbAll();
+  if (!recs.length) { toast('Nichts zu exportieren'); return; }
+  const saison = LS.get('saison', '2025/2026');
+  download(`Bayernliga_${saison.replace(/[^0-9A-Za-z]+/g, '-')}.xml`, Core.toXml(recs, { saison, verein: club() }));
+}
+$('#btnExport').onclick = exportXml;
+$('#fileXml').addEventListener('change', async e => {
+  const f = e.target.files[0]; e.target.value = ''; if (!f) return;
+  try {
+    const doc = new DOMParser().parseFromString(await f.text(), 'application/xml');
+    if (doc.getElementsByTagName('parsererror').length) throw new Error('Die Datei ist kein gültiges XML.');
+    const recs = Core.fromXmlDoc(doc);
+    let over = 0;
+    for (const r of recs) if (await dbGet(`${r.tag}-${r.matchNr}`)) over++;
+    if (over && !confirm(`${over} Match(es) existieren schon und werden überschrieben. Fortfahren?`)) return;
+    for (const r of recs) { r.key = `${r.tag}-${r.matchNr}`; r.savedAt = new Date().toISOString(); await dbPut(r); }
+    toast(`${recs.length} Matches importiert`); refreshList();
+  } catch (err) { alert('Import fehlgeschlagen: ' + err.message); }
+});
+$('#btnAlleLoeschen').onclick = async () => {
+  if (confirm('Wirklich ALLE gespeicherten Matches löschen? Zuvor besser eine XML exportieren.')) { await dbClear(); toast('Alles gelöscht'); refreshList(); }
+};
+
+loadSettings();
+</script>
+</body>
+</html>
