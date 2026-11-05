@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="theme-color" content="#1f4e79">
-<title>Bayernliga Erfassung</title>
+<title>Liga Erfassung</title>
 <style>
 :root{--blau:#1f4e79;--rand:#c9d3dd;--bg:#f3f6f9;--rot:#c62828;--gelb:#b26a00;--gruen:#2e7d32}
 *{box-sizing:border-box}
@@ -58,7 +58,7 @@ details summary{padding:2px 0}
 </head>
 <body>
 <header>
-  <h1>Bayernliga · Erfassung</h1>
+  <h1 id="appTitel">Bayernliga · Erfassung</h1>
   <nav>
     <button data-tab="erfassen" class="on">Erfassen</button>
     <button data-tab="daten">Daten</button>
@@ -145,7 +145,7 @@ details summary{padding:2px 0}
     <input type="password" id="pubpw" autocomplete="new-password">
     <label style="display:block;margin:8px 0;font-size:14px"><input type="checkbox" id="pubRemember"> Passwort auf diesem Handy merken</label>
     <button class="b" id="btnPublish">Datei für Kollegen erzeugen</button>
-    <div class="klein" style="margin-top:6px">Die Datei <b>daten.enc.json</b> ist verschlüsselt. Lade sie in GitHub hoch: Repository öffnen → Add file → Upload files → Datei wählen → Commit changes. Eine vorhandene Datei gleichen Namens wird ersetzt.</div>
+    <div class="klein" style="margin-top:6px">Die Datei <b id="dateiName">daten.enc.json</b> ist verschlüsselt. Lade sie in GitHub hoch: Repository öffnen → Add file → Upload files → Datei wählen → Commit changes. Eine vorhandene Datei gleichen Namens wird ersetzt.</div>
     <div class="klein" style="margin-top:10px">Link für die Kollegen:</div>
     <input type="text" id="viewerUrl" readonly>
     <button class="b sek" id="btnCopyUrl" style="margin-top:6px">Link kopieren</button>
@@ -546,18 +546,19 @@ details summary{padding:2px 0}
 </script>
 <script>
 'use strict';
+const CFG = {"ns": "", "db": "bogenliga", "club": "SG Schwarzenfeld", "liga": "Bayernliga", "datei": "daten_schwarzenfeld.enc.json"};
 const $ = s => document.querySelector(s);
 const h = s => String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 const LS = {
-  get(k, d) { try { const v = localStorage.getItem(k); return v == null ? d : v; } catch (e) { return d; } },
-  set(k, v) { try { localStorage.setItem(k, v); } catch (e) {} }
+  get(k, d) { try { const v = localStorage.getItem(CFG.ns + k); return v == null ? d : v; } catch (e) { return d; } },
+  set(k, v) { try { localStorage.setItem(CFG.ns + k, v); } catch (e) {} }
 };
 function toast(t) { const el = $('#toast'); el.textContent = t; el.classList.add('show'); clearTimeout(toast.t); toast.t = setTimeout(() => el.classList.remove('show'), 2600); }
 
 /* ---------- Datenbank (IndexedDB) ---------- */
 function openDb() {
   return new Promise((res, rej) => {
-    const r = indexedDB.open('bogenliga', 1);
+    const r = indexedDB.open(CFG.db, 1);
     r.onupgradeneeded = () => r.result.createObjectStore('matches', { keyPath: 'key' });
     r.onsuccess = () => res(r.result);
     r.onerror = () => rej(r.error);
@@ -582,13 +583,14 @@ const dbClear = () => tx('readwrite', s => s.clear());
 function loadSettings() {
   $('#apiKey').value = LS.get('apiKey', '');
   $('#model').value = LS.get('model', 'claude-sonnet-5-5');
-  $('#club').value = LS.get('club', 'SG Schwarzenfeld');
+  $('#dateiName').textContent = CFG.datei; document.title = CFG.liga + ' Erfassung'; $('#appTitel').textContent = CFG.liga + ' · Erfassung';
+  $('#club').value = LS.get('club', CFG.club);
   $('#saison').value = LS.get('saison', '2025/2026');
   $('#autoBackup').checked = LS.get('autoBackup', '1') === '1';
 }
 ['apiKey', 'model', 'club', 'saison'].forEach(id => $('#' + id).addEventListener('change', e => LS.set(id, e.target.value.trim())));
 $('#autoBackup').addEventListener('change', e => LS.set('autoBackup', e.target.checked ? '1' : '0'));
-const club = () => LS.get('club', 'SG Schwarzenfeld');
+const club = () => LS.get('club', CFG.club);
 
 /* ---------- Tabs ---------- */
 document.querySelectorAll('nav button').forEach(b => b.addEventListener('click', () => {
@@ -830,7 +832,7 @@ async function exportXml() {
   const recs = await dbAll();
   if (!recs.length) { toast('Nichts zu exportieren'); return; }
   const saison = LS.get('saison', '2025/2026');
-  download(`Bayernliga_${saison.replace(/[^0-9A-Za-z]+/g, '-')}.xml`, Core.toXml(recs, { saison, verein: club() }));
+  download(`${CFG.liga.replace(/\s+/g, '')}_${saison.replace(/[^0-9A-Za-z]+/g, '-')}.xml`, Core.toXml(recs, { saison, verein: club() }));
 }
 $('#btnExport').onclick = exportXml;
 $('#fileXml').addEventListener('change', async e => {
@@ -880,7 +882,7 @@ $('#btnPublish').onclick = async () => {
   try {
     const data = { v: 1, saison: LS.get('saison', '2025/2026'), verein: club(), erzeugt: new Date().toISOString(), schuetzen: ok, matches: recs.map(Pub.compact) };
     const file = await Pub.encrypt(data, pw);
-    download('daten.enc.json', JSON.stringify(file), 'application/json');
+    download(CFG.datei, JSON.stringify(file), 'application/json');
     toast(`Datei mit ${recs.length} Matches erzeugt – jetzt in GitHub hochladen`);
   } catch (e) { alert('Erzeugen fehlgeschlagen: ' + e.message); }
 };

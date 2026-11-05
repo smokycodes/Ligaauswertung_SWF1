@@ -45,7 +45,7 @@ footer{padding:4px 12px 24px;text-align:center}
 </head>
 <body>
 <header>
-  <h1 id="titel">Bayernliga · Auswertung</h1>
+  <h1 id="titel">Auswertung</h1>
   <nav id="nav" hidden>
     <button data-tab="schuetzen" class="on">Schützen</button>
     <button data-tab="spieltage">Spieltage</button>
@@ -284,13 +284,14 @@ footer{padding:4px 12px 24px;text-align:center}
 'use strict';
 const $ = s => document.querySelector(s);
 const h = s => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-const LS = { get(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }, set(k, v) { try { localStorage.setItem(k, v); } catch (e) {} }, del(k) { try { localStorage.removeItem(k); } catch (e) {} } };
+const CFG = {"ns": "", "db": "bogenliga", "club": "SG Schwarzenfeld", "liga": "Bayernliga", "datei": "daten_schwarzenfeld.enc.json"};
+const LS = { get(k) { try { return localStorage.getItem(CFG.ns + k); } catch (e) { return null; } }, set(k, v) { try { localStorage.setItem(CFG.ns + k, v); } catch (e) {} }, del(k) { try { localStorage.removeItem(CFG.ns + k); } catch (e) {} } };
 const n = (v, d) => (v == null || (typeof v === 'number' && isNaN(v)) ? '–' : Number(v).toFixed(d == null ? 0 : d).replace('.', ','));
 let DATA = null, RES = null;
 
 /* ---------- Anmeldung ---------- */
 async function load(pw) {
-  const r = await fetch('daten.enc.json?' + Date.now(), { cache: 'no-store' });
+  const r = await fetch(CFG.datei + '?' + Date.now(), { cache: 'no-store' });
   if (!r.ok) throw new Error(r.status === 404 ? 'Es sind noch keine Daten veröffentlicht.' : 'Die Daten konnten nicht geladen werden (HTTP ' + r.status + ').');
   DATA = await Pub.decrypt(await r.json(), pw);
 }
@@ -316,7 +317,7 @@ function showTab(t) {
 /* ---------- Anzeige ---------- */
 function render() {
   RES = Calc.compute(DATA.matches, DATA.schuetzen);
-  $('#titel').textContent = `${DATA.verein || 'Bayernliga'} · Saison ${DATA.saison || ''}`.trim();
+  $('#titel').textContent = `${DATA.verein || CFG.liga} · Saison ${DATA.saison || ''}`.trim();
   $('#foot').textContent = `Stand: ${new Date(DATA.erzeugt).toLocaleString('de-DE', { dateStyle: 'medium', timeStyle: 'short' })} · Angaben ohne Gewähr`;
   renderSchuetzen(); renderSpieltage(); renderDiagramme();
 }
