@@ -39,6 +39,13 @@ details:first-of-type{border-top:0}
 summary{cursor:pointer;font-weight:600;padding:4px 0}
 summary small{font-weight:400;color:var(--grau)}
 .erg{font-variant-numeric:tabular-nums}
+td.win{box-shadow:inset 0 0 0 2px var(--blau);font-weight:700}
+summary .tm.w{text-decoration:underline;text-decoration-thickness:2px;text-underline-offset:3px}
+summary small b{font-weight:700;color:#1b2733}
+.saisonbar{display:flex;align-items:center;gap:8px;margin:-2px 0 8px;font-size:13px;color:#cfe0f0}
+.saisonbar select{width:auto;max-width:70%;padding:5px 8px;font-size:14px;border-radius:6px}
+.srow{display:flex;justify-content:space-between;align-items:center;gap:8px;border-top:1px solid #e6ecf1;padding:8px 0}
+.srow:first-of-type{border-top:0}
 [hidden]{display:none!important}
 footer{padding:4px 12px 24px;text-align:center}
 </style>
@@ -46,6 +53,7 @@ footer{padding:4px 12px 24px;text-align:center}
 <body>
 <header>
   <h1 id="titel">Auswertung</h1>
+  <div class="saisonbar" id="saisonbar" hidden><label for="selSaison">Saison</label><select id="selSaison"></select></div>
   <nav id="nav" hidden>
     <button data-tab="schuetzen" class="on">Schützen</button>
     <button data-tab="spieltage">Spieltage</button>
@@ -64,18 +72,18 @@ footer{padding:4px 12px 24px;text-align:center}
 
   <div id="app" hidden>
     <section id="tab-schuetzen">
-      <div class="card"><h2>Ringe je Spieltag</h2><div class="scroll" id="tRinge"></div></div>
+      <div class="card"><h2 id="hRinge">Ringe je Spieltag</h2><div class="scroll" id="tRinge"></div></div>
       <div class="card"><h2>Ø Ringe je Pfeil</h2><div class="scroll" id="tSchnitt"></div>
-        <div class="klein" style="margin-top:6px">„Gesamt“ ist der Mittelwert der Spieltagsschnitte.</div></div>
+        <div class="klein" style="margin-top:6px" id="schnittInfo">„Gesamt“ ist der Mittelwert der Spieltagsschnitte.</div></div>
       <div class="card"><h2>Statistik</h2><div class="scroll" id="tStat"></div>
         <div class="klein" id="satzInfo" style="margin-top:6px"></div></div>
     </section>
     <section id="tab-spieltage" hidden><div id="spieltage"></div></section>
     <section id="tab-diagramme" hidden>
-      <div class="card"><h2>Verlauf eines Matches</h2>
+      <div class="card" id="cMatch"><h2>Verlauf eines Matches</h2>
         <div class="row"><div><label for="selTag">Spieltag</label><select id="selTag"></select></div><div><label for="selMatch">Match</label><select id="selMatch"></select></div></div>
         <div id="chMatch"></div></div>
-      <div class="card"><h2>Ø Ringe je Pfeil nach Spieltag</h2><div id="chTage"></div></div>
+      <div class="card"><h2 id="hTage">Ø Ringe je Pfeil nach Spieltag</h2><div id="chTage"></div></div>
       <div class="card"><h2>Pfeilverteilung</h2>
         <label class="klein" for="selSchuetze">Schütze</label><select id="selSchuetze"></select>
         <div id="chVert" style="margin-top:8px"></div><div class="klein" id="vertInfo"></div></div>
@@ -159,6 +167,32 @@ footer{padding:4px 12px 24px;text-align:center}
     return { rows, team };
   };
 
+  /* Saisonübergreifend: seasons = [{saison, schuetzen:[{nr,name}], matches:[...]}] (aufsteigend nach Saison).
+     Personen werden über den NAMEN zusammengeführt (Startnummern dürfen wechseln). */
+  Calc.computeAll = function (seasons) {
+    const order = [], byName = {};
+    const team = [];
+    seasons.forEach(se => {
+      const res = Calc.compute(se.matches, se.schuetzen);
+      res.rows.forEach(r => {
+        let a = byName[r.name];
+        if (!a) { a = byName[r.name] = { name: r.name, ringe: 0, pfeile: 0, misses: 0, saetze: 0, matches: 0, dist: new Array(11).fill(0), perSeason: {} }; order.push(r.name); }
+        const pf = r.pfeile.reduce((x, y) => x + y, 0);
+        a.ringe += r.gesamt || 0; a.pfeile += pf; a.misses += r.misses; a.saetze += r.saetze; a.matches += r.matches;
+        r.dist.forEach((v, i) => { a.dist[i] += v; });
+        if (pf) a.perSeason[se.saison] = { avg: r.avgGesamt, ringe: r.gesamt || 0, matches: r.matches };
+      });
+      const mp = res.team.tage.reduce((x, t) => x + (t.matchpunkte || 0), 0), mpN = res.team.tage.reduce((x, t) => x + t.bekannt, 0);
+      team.push({ saison: se.saison, avg: res.team.gesamtAvgPfeil, ringe: res.team.gesamtRinge, matchpunkte: mpN ? mp : null, bekannt: mpN, matches: se.matches.length });
+    });
+    const rows = order.map(n => {
+      const a = byName[n];
+      return Object.assign(a, { avg: a.pfeile ? r2(a.ringe / a.pfeile) : null, saetze: a.saetze });
+    });
+    const tr = rows.reduce((x, r) => x + r.ringe, 0), tp = rows.reduce((x, r) => x + r.pfeile, 0);
+    return { rows, team, seasons: seasons.map(s => s.saison), teamAvg: tp ? tr / tp : null, teamRinge: tr || null };
+  };
+
   if (typeof module !== 'undefined' && module.exports) module.exports = Calc; else root.Calc = Calc;
 })(typeof window !== 'undefined' ? window : globalThis);
 
@@ -222,6 +256,15 @@ footer{padding:4px 12px 24px;text-align:center}
   const esc = s => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
   const fmt = v => (Math.round(v * 100) / 100).toString().replace('.', ',');
 
+  /* Farbe, Markerform und Linienart einer Reihe: Index ci (fest je Person). Ab dem 9. Eintrag wiederholen sich die Farben, dann unterscheidet die Linienart. */
+  const DASH = ['', '6 3', '2 3'];
+  Charts.style = function (ci) {
+    ci = Math.max(0, ci | 0);
+    return { color: Charts.COLORS[ci % Charts.COLORS.length], shape: ci % 4, dash: DASH[Math.floor(ci / Charts.COLORS.length) % DASH.length] };
+  };
+  Charts.TEAM = { color: '#1b2733', shape: 3, dash: '4 3' };
+  const sty = (se, si) => Object.assign({}, Charts.style(se.ci != null ? se.ci : si), se.style || {});
+
   function marker(i, x, y, c, title) {
     x = +x; y = +y;
     const t = `<title>${esc(title)}</title>`;
@@ -245,14 +288,14 @@ footer{padding:4px 12px 24px;text-align:center}
     o.xLabels.forEach((lab, i) => { s += `<text x="${x(i)}" y="${H - B + 15}" text-anchor="middle" font-size="11" fill="#5a6b7b">${esc(lab)}</text>`; });
     if (o.xTitle) s += `<text x="${L + pw / 2}" y="${H - 4}" text-anchor="middle" font-size="11" fill="#5a6b7b">${esc(o.xTitle)}</text>`;
     o.series.forEach((se, si) => {
-      const c = Charts.COLORS[si % Charts.COLORS.length]; let d = '', pen = false, marks = '';
+      const st = sty(se, si), c = st.color; let d = '', pen = false, marks = '';
       se.values.forEach((v, i) => {
         if (v == null) { pen = false; return; }
         const px = x(i), py = y(Math.max(o.yMin, Math.min(o.yMax, v)));
         d += (pen ? 'L' : 'M') + px.toFixed(1) + ' ' + py.toFixed(1) + ' '; pen = true;
-        marks += marker(si, px.toFixed(1), py.toFixed(1), c, `${se.name}, ${o.xLabels[i]}: ${fmt(v)}`);
+        marks += marker(st.shape, px.toFixed(1), py.toFixed(1), c, `${se.name}, ${o.xLabels[i]}: ${fmt(v)}`);
       });
-      s += `<path d="${d}" fill="none" stroke="${c}" stroke-width="2"/>${marks}`;
+      s += `<path d="${d}" fill="none" stroke="${c}" stroke-width="2"${st.dash ? ` stroke-dasharray="${st.dash}"` : ''}/>${marks}`;
     });
     return s + '</svg>';
   };
@@ -274,7 +317,10 @@ footer{padding:4px 12px 24px;text-align:center}
     return s + '</svg>';
   };
 
-  Charts.legend = names => '<div class="legend">' + names.map((nm, i) => `<span><svg width="16" height="12" viewBox="0 0 16 12">${marker(i, 8, 6, Charts.COLORS[i % Charts.COLORS.length], nm)}</svg> ${esc(nm)}</span>`).join('') + '</div>';
+  /* kleines Farbsymbol (für Tabellen und Legende) */
+  Charts.dot = (st, nm) => `<svg width="14" height="12" viewBox="0 0 16 12" aria-hidden="true" style="vertical-align:-1px;margin-right:4px">${marker(st.shape, 8, 6, st.color, '')}</svg>`;
+  /* items: Reihen ({name, ci | style}) wie bei Charts.line */
+  Charts.legend = items => '<div class="legend">' + items.map((se, i) => `<span>${Charts.dot(sty(se, i), se.name)}${esc(se.name)}</span>`).join('') + '</div>';
 
   if (typeof module !== 'undefined' && module.exports) module.exports = Charts; else root.Charts = Charts;
 })(typeof window !== 'undefined' ? window : globalThis);
@@ -287,21 +333,34 @@ const h = s => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '
 const CFG = {"ns": "", "db": "bogenliga", "club": "SG Schwarzenfeld", "liga": "Bayernliga", "datei": "daten_schwarzenfeld.enc.json"};
 const LS = { get(k) { try { return localStorage.getItem(CFG.ns + k); } catch (e) { return null; } }, set(k, v) { try { localStorage.setItem(CFG.ns + k, v); } catch (e) {} }, del(k) { try { localStorage.removeItem(CFG.ns + k); } catch (e) {} } };
 const n = (v, d) => (v == null || (typeof v === 'number' && isNaN(v)) ? '–' : Number(v).toFixed(d == null ? 0 : d).replace('.', ','));
-let DATA = null, RES = null;
+let DATA = null, RES = null, AGG = null, SEL = null, FARBEN = {};
 
 /* ---------- Anmeldung ---------- */
 async function load(pw) {
   const r = await fetch(CFG.datei + '?' + Date.now(), { cache: 'no-store' });
   if (!r.ok) throw new Error(r.status === 404 ? 'Es sind noch keine Daten veröffentlicht.' : 'Die Daten konnten nicht geladen werden (HTTP ' + r.status + ').');
-  DATA = await Pub.decrypt(await r.json(), pw);
+  DATA = prepare(await Pub.decrypt(await r.json(), pw));
 }
+/* ältere Dateien (eine Saison) und neue Dateien (mehrere Saisons) gleich behandeln */
+function prepare(d) {
+  if (!d.saisons) d = { v: 2, erzeugt: d.erzeugt, farben: {}, saisons: [{ saison: d.saison || '', liga: CFG.liga, verein: d.verein, schuetzen: d.schuetzen, matches: d.matches }] };
+  d.saisons.sort((a, b) => (a.saison < b.saison ? -1 : a.saison > b.saison ? 1 : 0));
+  FARBEN = Object.assign({}, d.farben || {});
+  d.saisons.forEach(se => se.schuetzen.forEach(x => colorIdx(x.name)));
+  return d;
+}
+function colorIdx(name) {   /* feste Farbe je Name */
+  if (FARBEN[name] == null) FARBEN[name] = Object.values(FARBEN).reduce((m, x) => Math.max(m, x + 1), 0);
+  return FARBEN[name];
+}
+const dot = name => Charts.dot(Charts.style(colorIdx(name)), name);
 async function login(pw, remember) {
   const msg = $('#loginMsg'); msg.textContent = '';
   try {
     await load(pw);
     if (remember) LS.set('bl_pw', pw); else LS.del('bl_pw');
-    $('#login').hidden = true; $('#app').hidden = false; $('#nav').hidden = false;
-    render();
+    $('#login').hidden = true; $('#app').hidden = false; $('#nav').hidden = false; $('#saisonbar').hidden = false;
+    fillSaisonSelect(); render();
   } catch (e) { msg.textContent = e.message; LS.del('bl_pw'); $('#login').hidden = false; }
 }
 $('#btnLogin').onclick = () => { const pw = $('#pw').value; if (pw) login(pw, $('#merken').checked); };
@@ -314,94 +373,173 @@ function showTab(t) {
   window.scrollTo(0, 0);
 }
 
+/* ---------- Saison-Auswahl ---------- */
+function fillSaisonSelect() {
+  const l = DATA.saisons.slice().reverse();
+  SEL = l[0].saison;   /* standardmäßig die neueste Saison */
+  $('#selSaison').innerHTML = l.map(s => `<option value="${h(s.saison)}">${h(s.saison)}${s.liga ? ' · ' + h(s.liga) : ''}</option>`).join('') + (l.length > 1 ? '<option value="ALL">Alle Saisons</option>' : '');
+  $('#selSaison').value = SEL;
+}
+$('#selSaison').addEventListener('change', e => { SEL = e.target.value; render(); window.scrollTo(0, 0); });
+const isAll = () => SEL === 'ALL';
+const curSeason = () => DATA.saisons.find(s => s.saison === SEL);
+const short = s => s.slice(2, 4) + '/' + s.slice(7);
+
 /* ---------- Anzeige ---------- */
 function render() {
-  RES = Calc.compute(DATA.matches, DATA.schuetzen);
-  $('#titel').textContent = `${DATA.verein || CFG.liga} · Saison ${DATA.saison || ''}`.trim();
+  const last = DATA.saisons[DATA.saisons.length - 1];
+  if (isAll()) {
+    AGG = Calc.computeAll(DATA.saisons); RES = null;
+    $('#titel').textContent = `${last.verein || CFG.liga} · Alle Saisons`;
+  } else {
+    const S = curSeason(); RES = Calc.compute(S.matches, S.schuetzen); AGG = null;
+    $('#titel').textContent = `${S.verein || ''} · ${S.liga || CFG.liga} · Saison ${S.saison}`.replace(/^ · /, '');
+  }
   $('#foot').textContent = `Stand: ${new Date(DATA.erzeugt).toLocaleString('de-DE', { dateStyle: 'medium', timeStyle: 'short' })} · Angaben ohne Gewähr`;
   renderSchuetzen(); renderSpieltage(); renderDiagramme();
 }
-const nameCell = r => `<td class="nm" data-nr="${r.nr}">${h(r.name)}</td>`;
+const nameCell = (name, i) => `<td class="nm" data-i="${i}">${dot(name)}${h(name)}</td>`;
+const head = a => '<thead><tr><th>Schütze</th>' + a.map(x => `<th>${x}</th>`).join('') + '</tr></thead>';
 
 function renderSchuetzen() {
+  if (isAll()) return renderSchuetzenAlle();
   const R = RES.rows, T = RES.team;
-  const head = a => '<thead><tr><th>Schütze</th>' + a.map(x => `<th>${x}</th>`).join('') + '</tr></thead>';
+  $('#hRinge').textContent = 'Ringe je Spieltag';
+  $('#schnittInfo').textContent = '„Gesamt“ ist der Mittelwert der Spieltagsschnitte.';
   $('#tRinge').innerHTML = '<table class="t">' + head(['Gesamt', 'Tag 1', 'Tag 2', 'Tag 3', 'Tag 4']) + '<tbody>' +
-    R.map(r => `<tr>${nameCell(r)}<td><b>${n(r.gesamt)}</b></td>${r.ringe.map(v => `<td>${n(v)}</td>`).join('')}</tr>`).join('') +
+    R.map((r, i) => `<tr>${nameCell(r.name, i)}<td><b>${n(r.gesamt)}</b></td>${r.ringe.map(v => `<td>${n(v)}</td>`).join('')}</tr>`).join('') +
     `</tbody><tfoot><tr><td>Team</td><td>${n(T.gesamtRinge)}</td>${T.ringe.map(v => `<td>${n(v)}</td>`).join('')}</tr></tfoot></table>`;
   $('#tSchnitt').innerHTML = '<table class="t">' + head(['Gesamt', 'Tag 1', 'Tag 2', 'Tag 3', 'Tag 4']) + '<tbody>' +
-    R.map(r => `<tr>${nameCell(r)}<td><b>${n(r.avgGesamt, 2)}</b></td>${r.avg.map(v => `<td>${n(v, 2)}</td>`).join('')}</tr>`).join('') +
+    R.map((r, i) => `<tr>${nameCell(r.name, i)}<td><b>${n(r.avgGesamt, 2)}</b></td>${r.avg.map(v => `<td>${n(v, 2)}</td>`).join('')}</tr>`).join('') +
     `</tbody><tfoot><tr><td>Team</td><td>${n(T.gesamtAvgPfeil, 2)}</td>${T.avgPfeil.map(v => `<td>${n(v, 2)}</td>`).join('')}</tr></tfoot></table>`;
   $('#tStat').innerHTML = '<table class="t">' + head(['Misses', 'Sätze', 'Matches']) + '<tbody>' +
-    R.map(r => `<tr>${nameCell(r)}<td>${n(r.misses)}</td><td>${n(r.saetze, r.saetze % 1 ? 1 : 0)}</td><td>${n(r.matches)}</td></tr>`).join('') + '</tbody></table>';
+    R.map((r, i) => `<tr>${nameCell(r.name, i)}<td>${n(r.misses)}</td><td>${n(r.saetze, r.saetze % 1 ? 1 : 0)}</td><td>${n(r.matches)}</td></tr>`).join('') + '</tbody></table>';
   $('#satzInfo').textContent = `Team: Ø Ringe je Satz (6 Pfeile) – Tag 1: ${n(T.avgSatz[0], 2)}, Tag 2: ${n(T.avgSatz[1], 2)}, Tag 3: ${n(T.avgSatz[2], 2)}, Tag 4: ${n(T.avgSatz[3], 2)}, Gesamt: ${n(T.gesamtAvgSatz, 2)}.`;
-  document.querySelectorAll('td.nm').forEach(td => td.addEventListener('click', () => { $('#selSchuetze').value = td.dataset.nr; drawVert(); showTab('diagramme'); }));
+  bindNames();
+}
+function renderSchuetzenAlle() {
+  const R = AGG.rows, S = AGG.seasons, T = AGG.team;
+  const sh = S.map(s => `<span title="${h(s)}">${short(s)}</span>`);
+  $('#hRinge').textContent = 'Ringe je Saison';
+  $('#schnittInfo').textContent = 'Gesamt = Durchschnitt über alle geschossenen Pfeile aller Saisons. Die Saisonwerte entsprechen der jeweiligen Saisonansicht.';
+  $('#tRinge').innerHTML = '<table class="t">' + head(['Gesamt', ...sh]) + '<tbody>' +
+    R.map((r, i) => `<tr>${nameCell(r.name, i)}<td><b>${n(r.ringe || null)}</b></td>${S.map(s => `<td>${n(r.perSeason[s] ? r.perSeason[s].ringe : null)}</td>`).join('')}</tr>`).join('') +
+    `</tbody><tfoot><tr><td>Team</td><td>${n(AGG.teamRinge)}</td>${T.map(t => `<td>${n(t.ringe)}</td>`).join('')}</tr></tfoot></table>`;
+  $('#tSchnitt').innerHTML = '<table class="t">' + head(['Gesamt', ...sh]) + '<tbody>' +
+    R.map((r, i) => `<tr>${nameCell(r.name, i)}<td><b>${n(r.avg, 2)}</b></td>${S.map(s => `<td>${n(r.perSeason[s] ? r.perSeason[s].avg : null, 2)}</td>`).join('')}</tr>`).join('') +
+    `</tbody><tfoot><tr><td>Team</td><td>${n(AGG.teamAvg, 2)}</td>${T.map(t => `<td>${n(t.avg, 2)}</td>`).join('')}</tr></tfoot></table>`;
+  $('#tStat').innerHTML = '<table class="t">' + head(['Pfeile', 'Misses', 'Sätze', 'Matches']) + '<tbody>' +
+    R.map((r, i) => `<tr>${nameCell(r.name, i)}<td>${n(r.pfeile)}</td><td>${n(r.misses)}</td><td>${n(r.saetze, r.saetze % 1 ? 1 : 0)}</td><td>${n(r.matches)}</td></tr>`).join('') + '</tbody></table>';
+  $('#satzInfo').textContent = '';
+  bindNames();
+}
+function bindNames() {
+  document.querySelectorAll('td.nm').forEach(td => td.addEventListener('click', () => { $('#selSchuetze').value = td.dataset.i; drawVert(); showTab('diagramme'); }));
 }
 
-const nameOf = nr => { const s = DATA.schuetzen.find(x => +x.nr === +nr); return s ? s.name : 'Nr. ' + nr; };
+const nameOf = nr => { const s = curSeason().schuetzen.find(x => +x.nr === +nr); return s ? s.name : 'Nr. ' + nr; };
+
+/* eine Zeile je Match: beide Mannschaften, Gewinner unterstrichen, Gewinnerwerte fett */
+function matchLine(m, S) {
+  const o = m.own || {}, p = m.opp || {};
+  const spOk = o.setPoints != null && p.setPoints != null, mpOk = o.matchPoints != null && p.matchPoints != null;
+  const b = (x, y) => (x > y ? `<b>${x}</b>:${y}` : x < y ? `${x}:<b>${y}</b>` : `${x}:${y}`);
+  const ownWin = mpOk && o.matchPoints > p.matchPoints, oppWin = mpOk && o.matchPoints < p.matchPoints;
+  return `Match ${m.matchNr} · <span class="tm${ownWin ? ' w' : ''}">${h(S.verein || 'Wir')}</span> – <span class="tm${oppWin ? ' w' : ''}">${h(m.gegner || 'Gegner')}</span> ` +
+    `<small class="erg">${spOk ? ` · ${b(o.setPoints, p.setPoints)} Sätze` : ''}${mpOk ? ` · ${b(o.matchPoints, p.matchPoints)} Punkte` : ''}</small>`;
+}
 function renderSpieltage() {
-  const out = [];
+  if (isAll()) {
+    const l = DATA.saisons.slice().reverse();
+    $('#spieltage').innerHTML = '<div class="card"><h2>Saisons</h2>' + l.map(se => {
+      const r = Calc.compute(se.matches, se.schuetzen).team.tage, mp = r.reduce((a, t) => a + (t.matchpunkte || 0), 0), bek = r.reduce((a, t) => a + t.bekannt, 0);
+      return `<div class="srow"><div><b>${h(se.saison)}</b>${se.liga ? ' · ' + h(se.liga) : ''}<div class="klein">${se.matches.length} Matches${bek ? ` · ${mp} Matchpunkte` : ''}</div></div><button class="b sek" style="margin:0" data-s="${h(se.saison)}">Anzeigen</button></div>`;
+    }).join('') + '</div>';
+    document.querySelectorAll('#spieltage button[data-s]').forEach(bt => bt.onclick = () => { SEL = bt.dataset.s; $('#selSaison').value = SEL; render(); showTab('spieltage'); });
+    return;
+  }
+  const S = curSeason(), out = [];
   for (let t = 1; t <= 4; t++) {
-    const ms = DATA.matches.filter(m => m.tag === t).sort((a, b) => a.matchNr - b.matchNr);
+    const ms = S.matches.filter(m => m.tag === t).sort((a, b) => a.matchNr - b.matchNr);
     if (!ms.length) continue;
     const info = RES.team.tage[t - 1];
     let html = `<div class="card"><h2>Spieltag ${t}${info.matchpunkte != null ? ` · ${info.matchpunkte} Matchpunkte${info.bekannt < ms.length ? ` (aus ${info.bekannt} von ${ms.length} Matches)` : ''}` : ''} <span class="klein">(${ms.length} Matches)</span></h2>`;
     ms.forEach(m => {
       const k = m.k || (m.shooters[0] ? m.shooters[0].sets.length : 0);
-      const sp = m.own && m.own.setPoints != null && m.opp && m.opp.setPoints != null ? ` · ${m.own.setPoints}:${m.opp.setPoints} Sätze` : '';
-      const mp = m.own && m.own.matchPoints != null && m.opp && m.opp.matchPoints != null ? ` · ${m.own.matchPoints}:${m.opp.matchPoints} Punkte` : '';
-      const teamSet = i => m.shooters.reduce((a, S) => a + (S.sets[i] ? S.sets[i][0] + S.sets[i][1] : 0), 0);
+      const teamSet = i => m.shooters.reduce((a, Sh) => a + (Sh.sets[i] ? Sh.sets[i][0] + Sh.sets[i][1] : 0), 0);
+      const own = Array.from({ length: k }, (_, i) => teamSet(i)), ownSum = own.reduce((a, b) => a + b, 0);
+      const oppOk = m.opp && m.opp.setTotals && m.opp.setTotals.length && m.opp.setTotals.every(v => v != null);
+      const opp = oppOk ? m.opp.setTotals : [], oppSum = opp.reduce((a, b) => a + b, 0);
+      const w = (a, b) => (oppOk && a > b ? ' class="win"' : '');
       let tb = '<div class="scroll"><table class="t"><thead><tr><th>Schütze</th>' + Array.from({ length: k }, (_, i) => `<th>Satz ${i + 1}</th>`).join('') + '<th>Σ</th></tr></thead><tbody>';
-      m.shooters.forEach(S => {
-        const sum = S.sets.reduce((a, p) => a + p[0] + p[1], 0);
-        tb += `<tr><td>${h(nameOf(S.nr))}</td>${S.sets.map(p => `<td>${p[0]} · ${p[1]}</td>`).join('')}<td><b>${sum}</b></td></tr>`;
+      m.shooters.forEach(Sh => {
+        const nm = nameOf(Sh.nr), sum = Sh.sets.reduce((a, p) => a + p[0] + p[1], 0);
+        tb += `<tr><td>${dot(nm)}${h(nm)}</td>${Sh.sets.map(p => `<td>${p[0]} · ${p[1]}</td>`).join('')}<td><b>${sum}</b></td></tr>`;
       });
-      tb += `</tbody><tfoot><tr><td>Team</td>${Array.from({ length: k }, (_, i) => `<td>${teamSet(i)}</td>`).join('')}<td>${Array.from({ length: k }, (_, i) => teamSet(i)).reduce((a, b) => a + b, 0)}</td></tr>`;
-      if (m.opp && m.opp.setTotals && m.opp.setTotals.length && m.opp.setTotals.every(v => v != null)) tb += `<tr><td>${h(m.gegner || 'Gegner')}</td>${m.opp.setTotals.map(v => `<td>${v}</td>`).join('')}<td>${m.opp.setTotals.reduce((a, b) => a + b, 0)}</td></tr>`;
+      tb += `</tbody><tfoot><tr><td>${h(S.verein || 'Team')}</td>${own.map((v, i) => `<td${w(v, opp[i])}>${v}</td>`).join('')}<td${w(ownSum, oppSum)}>${ownSum}</td></tr>`;
+      if (oppOk) tb += `<tr><td>${h(m.gegner || 'Gegner')}</td>${opp.map((v, i) => `<td${w(v, own[i])}>${v}</td>`).join('')}<td${w(oppSum, ownSum)}>${oppSum}</td></tr>`;
       tb += '</tfoot></table></div>';
-      html += `<details><summary>Match ${m.matchNr} · ${h(m.gegner || '–')} <small class="erg">${sp}${mp}</small></summary>${tb}</details>`;
+      html += `<details><summary>${matchLine(m, S)}</summary>${tb}</details>`;
     });
     out.push(html + '</div>');
   }
-  $('#spieltage').innerHTML = out.join('') || '<div class="card">Noch keine Spieltage veröffentlicht.</div>';
+  $('#spieltage').innerHTML = out.join('') || '<div class="card">In dieser Saison sind noch keine Spieltage veröffentlicht.</div>';
 }
 
 function renderDiagramme() {
-  const tags = [...new Set(DATA.matches.map(m => m.tag))].sort((a, b) => a - b);
-  $('#selTag').innerHTML = tags.map(t => `<option value="${t}">Spieltag ${t}</option>`).join('');
-  const fillMatch = () => {
-    const ms = DATA.matches.filter(m => m.tag === +$('#selTag').value).sort((a, b) => a.matchNr - b.matchNr);
-    $('#selMatch').innerHTML = ms.map(m => `<option value="${m.matchNr}">Match ${m.matchNr}${m.gegner ? ' · ' + h(m.gegner) : ''}</option>`).join('');
-    drawMatch();
-  };
-  $('#selTag').onchange = fillMatch; $('#selMatch').onchange = drawMatch;
-  $('#selSchuetze').innerHTML = RES.rows.map(r => `<option value="${r.nr}">${h(r.name)}</option>`).join('');
+  const all = isAll();
+  $('#cMatch').hidden = all;
+  $('#hTage').textContent = all ? 'Ø Ringe je Pfeil nach Saison' : 'Ø Ringe je Pfeil nach Spieltag';
+  const rows = all ? AGG.rows : RES.rows;
+  $('#selSchuetze').innerHTML = rows.map((r, i) => `<option value="${i}">${h(r.name)}</option>`).join('');
   $('#selSchuetze').onchange = drawVert;
-  fillMatch(); drawTage(); drawVert();
+  if (!all) {
+    const S = curSeason(), tags = [...new Set(S.matches.map(m => m.tag))].sort((a, b) => a - b);
+    $('#selTag').innerHTML = tags.map(t => `<option value="${t}">Spieltag ${t}</option>`).join('');
+    const fillMatch = () => {
+      const ms = S.matches.filter(m => m.tag === +$('#selTag').value).sort((a, b) => a.matchNr - b.matchNr);
+      $('#selMatch').innerHTML = ms.map(m => `<option value="${m.matchNr}">Match ${m.matchNr}${m.gegner ? ' · ' + h(m.gegner) : ''}</option>`).join('');
+      drawMatch();
+    };
+    $('#selTag').onchange = fillMatch; $('#selMatch').onchange = drawMatch;
+    fillMatch();
+  }
+  drawTage(); drawVert();
 }
 function drawMatch() {
-  const m = DATA.matches.find(x => x.tag === +$('#selTag').value && x.matchNr === +$('#selMatch').value);
+  const m = curSeason().matches.find(x => x.tag === +$('#selTag').value && x.matchNr === +$('#selMatch').value);
   if (!m) { $('#chMatch').innerHTML = '<div class="klein">Keine Daten.</div>'; return; }
-  const series = m.shooters.map(S => ({ name: nameOf(S.nr), values: S.sets.flat() }));
-  const all = series.flatMap(s => s.values).filter(v => v != null);
-  const yMin = Math.min(5, Math.min(...all));
+  const series = m.shooters.map(S => ({ name: nameOf(S.nr), ci: colorIdx(nameOf(S.nr)), values: S.sets.flat() }));
+  const vals = series.flatMap(s => s.values).filter(v => v != null);
+  const yMin = Math.min(5, Math.min(...vals));
   const len = Math.max(...series.map(s => s.values.length));
-  $('#chMatch').innerHTML = Charts.line({ xLabels: Array.from({ length: len }, (_, i) => String(i + 1)), series, yMin, yMax: 10, yStep: 1, xTitle: 'Pfeil (2 je Satz)', title: 'Pfeilwerte im Match' }) + Charts.legend(series.map(s => s.name));
+  $('#chMatch').innerHTML = Charts.line({ xLabels: Array.from({ length: len }, (_, i) => String(i + 1)), series, yMin, yMax: 10, yStep: 1, xTitle: 'Pfeil (2 je Satz)', title: 'Pfeilwerte im Match' }) + Charts.legend(series);
 }
 function drawTage() {
-  const series = RES.rows.filter(r => r.avg.some(v => v != null)).map(r => ({ name: r.name, values: r.avg }));
-  series.push({ name: 'Team', values: RES.team.avgPfeil });
-  const all = series.flatMap(s => s.values).filter(v => v != null);
-  if (!all.length) { $('#chTage').innerHTML = '<div class="klein">Keine Daten.</div>'; return; }
-  const yMin = Math.max(0, Math.floor(Math.min(...all) * 2) / 2 - 0.5), yMax = Math.min(10, Math.ceil(Math.max(...all) * 2) / 2 + 0.5);
-  $('#chTage').innerHTML = Charts.line({ xLabels: ['Tag 1', 'Tag 2', 'Tag 3', 'Tag 4'], series, yMin, yMax, yStep: 0.5, title: 'Ø Ringe je Pfeil nach Spieltag' }) + Charts.legend(series.map(s => s.name));
+  let xLabels, series;
+  if (isAll()) {
+    xLabels = AGG.seasons.map(short);
+    series = AGG.rows.map(r => ({ name: r.name, ci: colorIdx(r.name), values: AGG.seasons.map(s => (r.perSeason[s] ? r.perSeason[s].avg : null)) })).filter(s => s.values.some(v => v != null));
+    series.push({ name: 'Team', style: Charts.TEAM, values: AGG.team.map(t => t.avg) });
+  } else {
+    xLabels = ['Tag 1', 'Tag 2', 'Tag 3', 'Tag 4'];
+    series = RES.rows.filter(r => r.avg.some(v => v != null)).map(r => ({ name: r.name, ci: colorIdx(r.name), values: r.avg }));
+    series.push({ name: 'Team', style: Charts.TEAM, values: RES.team.avgPfeil });
+  }
+  const vals = series.flatMap(s => s.values).filter(v => v != null);
+  if (!vals.length) { $('#chTage').innerHTML = '<div class="klein">Keine Daten.</div>'; return; }
+  const yMin = Math.max(0, Math.floor(Math.min(...vals) * 2) / 2 - 0.5), yMax = Math.min(10, Math.ceil(Math.max(...vals) * 2) / 2 + 0.5);
+  $('#chTage').innerHTML = Charts.line({ xLabels, series, yMin, yMax, yStep: 0.5, title: isAll() ? 'Ø Ringe je Pfeil nach Saison' : 'Ø Ringe je Pfeil nach Spieltag' }) + Charts.legend(series);
 }
+const RINGE = [0, 6, 7, 8, 9, 10];   /* unsere Scheibe: 6–10, danach Fehlschuss (0) */
 function drawVert() {
-  const r = RES.rows.find(x => x.nr === +$('#selSchuetze').value);
-  if (!r) return;
-  const tot = r.dist.reduce((a, b) => a + b, 0);
-  $('#chVert').innerHTML = Charts.bars({ labels: r.dist.map((_, i) => String(i)), values: r.dist, title: 'Pfeilverteilung ' + r.name });
-  $('#vertInfo').textContent = tot ? `${tot} Pfeile · ${n(100 * (r.dist[10] || 0) / tot, 1)} % Zehner · ${n(100 * ((r.dist[10] || 0) + (r.dist[9] || 0)) / tot, 1)} % Neuner oder Zehner · ${r.misses} Fehlschüsse` : '';
+  const rows = isAll() ? AGG.rows : RES.rows;
+  const r = rows[+$('#selSchuetze').value];
+  if (!r) { $('#chVert').innerHTML = ''; $('#vertInfo').textContent = ''; return; }
+  const tot = r.dist.reduce((a, b) => a + b, 0), fremd = r.dist.slice(1, 6).reduce((a, b) => a + b, 0);
+  $('#chVert').innerHTML = Charts.bars({ labels: RINGE.map(String), values: RINGE.map(i => r.dist[i]), color: Charts.style(colorIdx(r.name)).color, title: 'Pfeilverteilung ' + r.name });
+  $('#vertInfo').textContent = tot ? `${tot} Pfeile · ${n(100 * (r.dist[10] || 0) / tot, 1)} % Zehner · ${n(100 * ((r.dist[10] || 0) + (r.dist[9] || 0)) / tot, 1)} % Neuner oder Zehner · ${r.misses} Fehlschüsse` +
+    (fremd ? ` · ${fremd} Pfeil(e) mit Wert 1–5 nicht dargestellt` : '') : '';
 }
 
 /* Automatisch anmelden, wenn auf diesem Gerät gemerkt */
