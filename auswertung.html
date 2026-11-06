@@ -39,6 +39,9 @@ details:first-of-type{border-top:0}
 summary{cursor:pointer;font-weight:600;padding:4px 0}
 summary small{font-weight:400;color:var(--grau)}
 .erg{font-variant-numeric:tabular-nums}
+h2 .pts{font-weight:400;color:#1b2733}
+h2 .pts b{font-weight:700}
+td.sub{font-size:11px;color:var(--grau);font-weight:400;padding-top:0}
 td.win{box-shadow:inset 0 0 0 2px var(--blau);font-weight:700}
 summary .tm.w{text-decoration:underline;text-decoration-thickness:2px;text-underline-offset:3px}
 summary small b{font-weight:700;color:#1b2733}
@@ -77,8 +80,12 @@ footer{padding:4px 12px 24px;text-align:center}
         <div class="klein" style="margin-top:6px" id="schnittInfo">„Gesamt“ ist der Mittelwert der Spieltagsschnitte.</div></div>
       <div class="card"><h2>Statistik</h2><div class="scroll" id="tStat"></div>
         <div class="klein" id="satzInfo" style="margin-top:6px"></div></div>
+      <div class="card"><h2>Ø Ringe je Pfeil nach Satz</h2><div class="scroll" id="tSatz"></div>
+        <div class="klein" style="margin-top:6px">Satz 5 wird nicht in jedem Match geschossen. Die Zeile „Sätze“ zeigt, wie viele Sätze hinter dem Team-Wert stehen. Bei wenigen Sätzen sind Unterschiede oft Zufall.</div></div>
+      <div class="card"><h2>Bestleistungen <span class="klein">(bester Satz · bestes Match · bester Spieltag)</span></h2><div class="scroll" id="tBest"></div>
+        <div class="klein" style="margin-top:6px">Satz = 2 Pfeile (Team: alle drei Schützen). Match und Spieltag = Ø Ringe je Pfeil. T = Spieltag, M = Match, S = Satz.</div></div>
     </section>
-    <section id="tab-spieltage" hidden><div id="spieltage"></div></section>
+    <section id="tab-spieltage" hidden><div id="spieltage"></div><div id="bilanz"></div></section>
     <section id="tab-diagramme" hidden>
       <div class="card" id="cMatch"><h2>Verlauf eines Matches</h2>
         <div class="row"><div><label for="selTag">Spieltag</label><select id="selTag"></select></div><div><label for="selMatch">Match</label><select id="selMatch"></select></div></div>
@@ -191,6 +198,76 @@ footer{padding:4px 12px 24px;text-align:center}
     });
     const tr = rows.reduce((x, r) => x + r.ringe, 0), tp = rows.reduce((x, r) => x + r.pfeile, 0);
     return { rows, team, seasons: seasons.map(s => s.saison), teamAvg: tp ? tr / tp : null, teamRinge: tr || null };
+  };
+
+  /* Bilanz je Gegner. seasons = [{matches}]; Sieg/Remis/Niederlage nach Matchpunkten (2:0, 1:1, 0:2).
+     Gegner werden über den Namen (ohne Groß-/Kleinschreibung und doppelte Leerzeichen) zusammengeführt. */
+  Calc.bilanz = function (seasons) {
+    const map = {};
+    seasons.forEach(se => se.matches.forEach(m => {
+      const name = String(m.gegner || '').trim().replace(/\s+/g, ' '); if (!name) return;
+      const key = name.toLowerCase();
+      const g = map[key] || (map[key] = { name, erfasst: 0, gewertet: 0, s: 0, r: 0, n: 0, sp: [0, 0], mp: [0, 0] });
+      g.erfasst++;
+      const o = m.own || {}, p = m.opp || {};
+      if (o.matchPoints != null && p.matchPoints != null) {
+        g.gewertet++; g.mp[0] += o.matchPoints; g.mp[1] += p.matchPoints;
+        if (o.matchPoints > p.matchPoints) g.s++; else if (o.matchPoints < p.matchPoints) g.n++; else g.r++;
+      }
+      if (o.setPoints != null && p.setPoints != null) { g.sp[0] += o.setPoints; g.sp[1] += p.setPoints; }
+    }));
+    return Object.values(map).sort((a, b) => a.name.localeCompare(b.name, 'de'));
+  };
+
+  /* Ø Ringe je Pfeil nach Satznummer (1–5) je Schütze (über den Namen) und für das Team.
+     seasons = [{schuetzen, matches}] */
+  Calc.satz = function (seasons) {
+    const byName = {}, order = [], team = { ringe: [0, 0, 0, 0, 0], pfeile: [0, 0, 0, 0, 0] };
+    const get = name => byName[name] || (order.push(name), byName[name] = { name, ringe: [0, 0, 0, 0, 0], pfeile: [0, 0, 0, 0, 0] });
+    seasons.forEach(se => {
+      const nm = {}; (se.schuetzen || []).forEach(s => { nm[+s.nr] = s.name; get(s.name); });
+      se.matches.forEach(m => m.shooters.forEach(S => {
+        const o = get(nm[+S.nr] || ('Nr. ' + S.nr));
+        S.sets.forEach((p, i) => {
+          if (p[0] == null || p[1] == null) return;
+          o.ringe[i] += p[0] + p[1]; o.pfeile[i] += 2; team.ringe[i] += p[0] + p[1]; team.pfeile[i] += 2;
+        });
+      }));
+    });
+    const fin = o => ({ avg: o.ringe.map((r, i) => (o.pfeile[i] ? r / o.pfeile[i] : null)), saetze: o.pfeile.map(p => p / 2) });
+    const rows = order.map(n => Object.assign({ name: n }, fin(byName[n]))).filter(r => r.saetze.some(x => x > 0));
+    const t = fin(team);
+    return { rows, team: { avg: t.avg, saetze: team.pfeile.map(p => p / 6) } };   /* Team: Sätze mit allen drei Schützen */
+  };
+
+  /* Bestleistungen je Schütze (über den Namen) und fürs Team.
+     Satz = Summe der 2 Pfeile eines Schützen (Team: aller drei Schützen); Match = Ø Ringe je Pfeil (mind. 3 Sätze);
+     Spieltag = Ø Ringe je Pfeil wie in der Tabelle. Rückgabe je Eintrag {val, saison, tag, matchNr, satz}. */
+  Calc.beste = function (seasons) {
+    const rows = {}, order = [], team = { name: 'Team', satz: null, match: null, tag: null };
+    const get = name => rows[name] || (order.push(name), rows[name] = { name, satz: null, match: null, tag: null });
+    const upd = (o, key, val, ctx) => { if (val != null && (!o[key] || val > o[key].val + 1e-9)) o[key] = Object.assign({ val }, ctx); };
+    seasons.forEach(se => {
+      const res = Calc.compute(se.matches, se.schuetzen), nm = {};
+      res.rows.forEach(r => { nm[r.nr] = r.name; get(r.name); r.avg.forEach((v, ti) => upd(rows[r.name], 'tag', v, { saison: se.saison, tag: ti + 1 })); });
+      res.team.avgPfeil.forEach((v, ti) => upd(team, 'tag', v, { saison: se.saison, tag: ti + 1 }));
+      se.matches.forEach(m => {
+        const base = { saison: se.saison, tag: m.tag, matchNr: m.matchNr };
+        let tr = 0, tp = 0;
+        m.shooters.forEach(S => {
+          const o = get(nm[+S.nr] || ('Nr. ' + S.nr)); let r = 0, p = 0;
+          S.sets.forEach((s, i) => { if (s[0] == null || s[1] == null) return; r += s[0] + s[1]; p += 2; upd(o, 'satz', s[0] + s[1], Object.assign({ satz: i + 1 }, base)); });
+          if (p >= 6) upd(o, 'match', r / p, base);
+          tr += r; tp += p;
+        });
+        if (tp >= 18) upd(team, 'match', tr / tp, base);
+        for (let i = 0; i < 5; i++) {
+          if (m.shooters.length && m.shooters.every(S => S.sets[i] && S.sets[i][0] != null && S.sets[i][1] != null))
+            upd(team, 'satz', m.shooters.reduce((a, S) => a + S.sets[i][0] + S.sets[i][1], 0), Object.assign({ satz: i + 1 }, base));
+        }
+      });
+    });
+    return { rows: order.map(n => rows[n]).filter(r => r.satz || r.match || r.tag), team };
   };
 
   if (typeof module !== 'undefined' && module.exports) module.exports = Calc; else root.Calc = Calc;
@@ -322,6 +399,33 @@ footer{padding:4px 12px 24px;text-align:center}
   /* items: Reihen ({name, ci | style}) wie bei Charts.line */
   Charts.legend = items => '<div class="legend">' + items.map((se, i) => `<span>${Charts.dot(sty(se, i), se.name)}${esc(se.name)}</span>`).join('') + '</div>';
 
+  /* Kuchendiagramm mit Legende. o: {items:[{label, value, color, dark}], title}. Direktbeschriftung in den Segmenten ab 6 %, Legende nennt immer Anzahl und Anteil. */
+  Charts.pie = function (o) {
+    const W = 220, cx = 110, cy = 110, r = 100, tot = o.items.reduce((a, b) => a + b.value, 0);
+    if (!tot) return '<div class="klein">Keine Daten.</div>';
+    const f1 = v => (Math.round(v * 10) / 10).toString().replace('.', ',');
+    let s = `<svg viewBox="0 0 ${W} ${W}" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="${esc(o.title || 'Kuchendiagramm')}" style="width:100%;max-width:260px;height:auto;display:block;margin:0 auto">`;
+    let a0 = -Math.PI / 2;
+    o.items.forEach(it => {
+      if (!it.value) return;
+      const fr = it.value / tot, a1 = a0 + fr * 2 * Math.PI, pct = f1(100 * fr) + ' %';
+      const tip = `<title>${esc(it.label)}: ${it.value} Pfeile (${pct})</title>`;
+      if (fr > 0.9999) s += `<circle cx="${cx}" cy="${cy}" r="${r}" fill="${it.color}" stroke="#fff" stroke-width="1.5">${tip}</circle>`;
+      else {
+        const x0 = cx + r * Math.cos(a0), y0 = cy + r * Math.sin(a0), x1 = cx + r * Math.cos(a1), y1 = cy + r * Math.sin(a1);
+        s += `<path d="M${cx} ${cy} L${x0.toFixed(2)} ${y0.toFixed(2)} A${r} ${r} 0 ${fr > 0.5 ? 1 : 0} 1 ${x1.toFixed(2)} ${y1.toFixed(2)} Z" fill="${it.color}" stroke="#fff" stroke-width="1.5">${tip}</path>`;
+      }
+      if (fr >= 0.06) {
+        const am = (a0 + a1) / 2, tx = cx + r * 0.64 * Math.cos(am), ty = cy + r * 0.64 * Math.sin(am);
+        s += `<text x="${tx.toFixed(1)}" y="${(ty + 4).toFixed(1)}" text-anchor="middle" font-size="12" font-weight="600" fill="${it.dark ? '#fff' : '#1b2733'}">${esc(it.label)}</text>`;
+      }
+      a0 = a1;
+    });
+    s += '</svg><div class="legend" style="justify-content:center">';
+    o.items.forEach(it => { s += `<span><svg width="12" height="12" aria-hidden="true"><rect width="12" height="12" rx="2" fill="${it.color}" stroke="#9db4c9" stroke-width="0.5"/></svg>${esc(it.label)}: ${it.value} (${f1(100 * it.value / tot)} %)</span>`; });
+    return s + '</div>';
+  };
+
   if (typeof module !== 'undefined' && module.exports) module.exports = Charts; else root.Charts = Charts;
 })(typeof window !== 'undefined' ? window : globalThis);
 
@@ -415,7 +519,7 @@ function renderSchuetzen() {
   $('#tStat').innerHTML = '<table class="t">' + head(['Misses', 'Sätze', 'Matches']) + '<tbody>' +
     R.map((r, i) => `<tr>${nameCell(r.name, i)}<td>${n(r.misses)}</td><td>${n(r.saetze, r.saetze % 1 ? 1 : 0)}</td><td>${n(r.matches)}</td></tr>`).join('') + '</tbody></table>';
   $('#satzInfo').textContent = `Team: Ø Ringe je Satz (6 Pfeile) – Tag 1: ${n(T.avgSatz[0], 2)}, Tag 2: ${n(T.avgSatz[1], 2)}, Tag 3: ${n(T.avgSatz[2], 2)}, Tag 4: ${n(T.avgSatz[3], 2)}, Gesamt: ${n(T.gesamtAvgSatz, 2)}.`;
-  bindNames();
+  bindNames(); renderSatz(); renderBest();
 }
 function renderSchuetzenAlle() {
   const R = AGG.rows, S = AGG.seasons, T = AGG.team;
@@ -431,7 +535,35 @@ function renderSchuetzenAlle() {
   $('#tStat').innerHTML = '<table class="t">' + head(['Pfeile', 'Misses', 'Sätze', 'Matches']) + '<tbody>' +
     R.map((r, i) => `<tr>${nameCell(r.name, i)}<td>${n(r.pfeile)}</td><td>${n(r.misses)}</td><td>${n(r.saetze, r.saetze % 1 ? 1 : 0)}</td><td>${n(r.matches)}</td></tr>`).join('') + '</tbody></table>';
   $('#satzInfo').textContent = '';
-  bindNames();
+  bindNames(); renderSatz(); renderBest();
+}
+const seasonsNow = () => (isAll() ? DATA.saisons : [curSeason()]);
+function renderSatz() {
+  const X = Calc.satz(seasonsNow());
+  $('#tSatz').innerHTML = '<table class="t">' + head([1, 2, 3, 4, 5].map(i => 'Satz ' + i)) + '<tbody>' +
+    X.rows.map(r => `<tr><td>${dot(r.name)}${h(r.name)}</td>${r.avg.map(v => `<td>${n(v, 2)}</td>`).join('')}</tr>`).join('') +
+    `</tbody><tfoot><tr><td>Team</td>${X.team.avg.map(v => `<td>${n(v, 2)}</td>`).join('')}</tr><tr><td class="klein" style="font-weight:400">Sätze</td>${X.team.saetze.map(v => `<td class="klein" style="font-weight:400">${n(v)}</td>`).join('')}</tr></tfoot></table>`;
+}
+const ctxText = c => [isAll() ? short(c.saison) : null, 'T' + c.tag, c.matchNr != null ? 'M' + c.matchNr : null, c.satz ? 'S' + c.satz : null].filter(Boolean).join(' · ');
+function renderBest() {
+  const X = Calc.beste(seasonsNow());
+  const cell = (e, d) => (e ? `<td><b>${n(e.val, d)}</b><div class="klein" style="white-space:nowrap">${h(ctxText(e))}</div></td>` : '<td>–</td>');
+  $('#tBest').innerHTML = '<table class="t">' + head(['Satz', 'Match', 'Spieltag']) + '<tbody>' +
+    X.rows.map(r => `<tr><td>${dot(r.name)}${h(r.name)}</td>${cell(r.satz, 0)}${cell(r.match, 2)}${cell(r.tag, 2)}</tr>`).join('') +
+    `</tbody><tfoot><tr><td>Team</td>${cell(X.team.satz, 0)}${cell(X.team.match, 2)}${cell(X.team.tag, 2)}</tr></tfoot></table>`;
+}
+function renderBilanz() {
+  const alle = Calc.bilanz(seasonsNow());
+  const fehlt = alle.reduce((a, g) => a + g.erfasst - g.gewertet, 0);
+  const B = alle.filter(g => g.gewertet > 0);   /* Gegner ohne gelesene Punkte nicht als Nullzeile zeigen */
+  if (!B.length) { $('#bilanz').innerHTML = ''; return; }
+  const sum = (f) => B.reduce((a, g) => a + f(g), 0);
+  const fmt = (a, b) => (a > b ? `<b>${a}</b>:${b}` : a < b ? `${a}:<b>${b}</b>` : `${a}:${b}`);
+  $('#bilanz').innerHTML = `<div class="card"><h2>Bilanz je Gegner${isAll() ? ' (alle Saisons)' : ''}</h2><div class="scroll"><table class="t">` +
+    '<thead><tr><th>Gegner</th><th title="gewertete Matches">Sp.</th><th title="Siege">S</th><th title="Remis">R</th><th title="Niederlagen">N</th><th>Sätze</th><th>Punkte</th></tr></thead><tbody>' +
+    B.map(g => `<tr><td>${h(g.name)}</td><td>${g.gewertet}</td><td>${g.s}</td><td>${g.r}</td><td>${g.n}</td><td>${fmt(g.sp[0], g.sp[1])}</td><td>${fmt(g.mp[0], g.mp[1])}</td></tr>`).join('') +
+    `</tbody><tfoot><tr><td>Gesamt</td><td>${sum(g => g.gewertet)}</td><td>${sum(g => g.s)}</td><td>${sum(g => g.r)}</td><td>${sum(g => g.n)}</td><td>${fmt(sum(g => g.sp[0]), sum(g => g.sp[1]))}</td><td>${fmt(sum(g => g.mp[0]), sum(g => g.mp[1]))}</td></tr></tfoot></table></div>` +
+    `<div class="klein" style="margin-top:6px">Sp. = Matches, S/R/N = Sieg/Remis/Niederlage nach Matchpunkten (2:0, 1:1, 0:2), Sätze = Satzpunkte, Punkte = Matchpunkte. Fett = höherer Wert.${fehlt ? ` ${fehlt} Match(es) ohne gelesene Punkte sind nicht enthalten.` : ''} Gegner werden über den Namen zusammengeführt.</div></div>`;
 }
 function bindNames() {
   document.querySelectorAll('td.nm').forEach(td => td.addEventListener('click', () => { $('#selSchuetze').value = td.dataset.i; drawVert(); showTab('diagramme'); }));
@@ -456,14 +588,17 @@ function renderSpieltage() {
       return `<div class="srow"><div><b>${h(se.saison)}</b>${se.liga ? ' · ' + h(se.liga) : ''}<div class="klein">${se.matches.length} Matches${bek ? ` · ${mp} Matchpunkte` : ''}</div></div><button class="b sek" style="margin:0" data-s="${h(se.saison)}">Anzeigen</button></div>`;
     }).join('') + '</div>';
     document.querySelectorAll('#spieltage button[data-s]').forEach(bt => bt.onclick = () => { SEL = bt.dataset.s; $('#selSaison').value = SEL; render(); showTab('spieltage'); });
+    renderBilanz();
     return;
   }
   const S = curSeason(), out = [];
   for (let t = 1; t <= 4; t++) {
     const ms = S.matches.filter(m => m.tag === t).sort((a, b) => a.matchNr - b.matchNr);
     if (!ms.length) continue;
-    const info = RES.team.tage[t - 1];
-    let html = `<div class="card"><h2>Spieltag ${t}${info.matchpunkte != null ? ` · ${info.matchpunkte} Matchpunkte${info.bekannt < ms.length ? ` (aus ${info.bekannt} von ${ms.length} Matches)` : ''}` : ''} <span class="klein">(${ms.length} Matches)</span></h2>`;
+    let mpA = 0, mpB = 0, bek = 0;   /* Matchpunkte beider Seiten, soweit vom Zettel gelesen */
+    ms.forEach(m => { const o = m.own || {}, p = m.opp || {}; if (o.matchPoints != null && p.matchPoints != null) { mpA += o.matchPoints; mpB += p.matchPoints; bek++; } });
+    const pts = bek ? ` <span class="pts">· ${mpA > mpB ? `<b>${mpA}</b>:${mpB}` : mpA < mpB ? `${mpA}:<b>${mpB}</b>` : `${mpA}:${mpB}`} Matchpunkte${bek < ms.length ? ` (aus ${bek} von ${ms.length} Matches)` : ''}</span>` : '';
+    let html = `<div class="card"><h2>Spieltag ${t}${pts} <span class="klein">(${ms.length} Matches)</span></h2>`;
     ms.forEach(m => {
       const k = m.k || (m.shooters[0] ? m.shooters[0].sets.length : 0);
       const teamSet = i => m.shooters.reduce((a, Sh) => a + (Sh.sets[i] ? Sh.sets[i][0] + Sh.sets[i][1] : 0), 0);
@@ -484,6 +619,7 @@ function renderSpieltage() {
     out.push(html + '</div>');
   }
   $('#spieltage').innerHTML = out.join('') || '<div class="card">In dieser Saison sind noch keine Spieltage veröffentlicht.</div>';
+  renderBilanz();
 }
 
 function renderDiagramme() {
@@ -531,13 +667,18 @@ function drawTage() {
   const yMin = Math.max(0, Math.floor(Math.min(...vals) * 2) / 2 - 0.5), yMax = Math.min(10, Math.ceil(Math.max(...vals) * 2) / 2 + 0.5);
   $('#chTage').innerHTML = Charts.line({ xLabels, series, yMin, yMax, yStep: 0.5, title: isAll() ? 'Ø Ringe je Pfeil nach Saison' : 'Ø Ringe je Pfeil nach Spieltag' }) + Charts.legend(series);
 }
-const RINGE = [0, 6, 7, 8, 9, 10];   /* unsere Scheibe: 6–10, danach Fehlschuss (0) */
+const RINGE = [10, 9, 8, 7, 6, 0];   /* unsere Scheibe: 6–10, danach Fehlschuss (0); Reihenfolge im Kuchen im Uhrzeigersinn ab oben */
+const RING_FARBE = {   /* 10/9 gelb, 8/7 rot, 6 blau, Fehlschuss grau */
+  10: { color: '#FFD83D', dark: false }, 9: { color: '#E6A700', dark: false },
+  8: { color: '#E4572E', dark: true }, 7: { color: '#A61E22', dark: true },
+  6: { color: '#0072B2', dark: true }, 0: { color: '#6B6B6B', dark: true }
+};
 function drawVert() {
   const rows = isAll() ? AGG.rows : RES.rows;
   const r = rows[+$('#selSchuetze').value];
   if (!r) { $('#chVert').innerHTML = ''; $('#vertInfo').textContent = ''; return; }
   const tot = r.dist.reduce((a, b) => a + b, 0), fremd = r.dist.slice(1, 6).reduce((a, b) => a + b, 0);
-  $('#chVert').innerHTML = Charts.bars({ labels: RINGE.map(String), values: RINGE.map(i => r.dist[i]), color: Charts.style(colorIdx(r.name)).color, title: 'Pfeilverteilung ' + r.name });
+  $('#chVert').innerHTML = Charts.pie({ title: 'Pfeilverteilung ' + r.name, items: RINGE.map(i => ({ label: String(i), value: r.dist[i], color: RING_FARBE[i].color, dark: RING_FARBE[i].dark })) });
   $('#vertInfo').textContent = tot ? `${tot} Pfeile · ${n(100 * (r.dist[10] || 0) / tot, 1)} % Zehner · ${n(100 * ((r.dist[10] || 0) + (r.dist[9] || 0)) / tot, 1)} % Neuner oder Zehner · ${r.misses} Fehlschüsse` +
     (fremd ? ` · ${fremd} Pfeil(e) mit Wert 1–5 nicht dargestellt` : '') : '';
 }
